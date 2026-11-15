@@ -1,0 +1,89 @@
+# aiops-dilemma workload definition (manual mode).
+# Every number here is yours: traffic shape, request profile, MaaS price/limits, constraints.
+# Run:  dilemma plan -c examples/workload.yaml   (then prompts / deploy / load / analyze / report)
+#   or: dilemma auto -c examples/workload.yaml   (end to end, tears the endpoint down at the end)
+
+name: doc-extraction             # run name; artifacts go to runs/<name>/
+project: my-gcp-project          # GCP project for Agent Platform endpoints + Cloud Billing catalog
+region: us-central1
+
+model:
+  model_garden_id: google/gemma4@gemma-4-26b-a4b-it   # Model Garden id
+  hf_id: google/gemma-4-26b-a4b-it                    # Hugging Face id (size + tokenizer); optional
+  precision: bf16                                     # bf16 | fp8 (vLLM on-the-fly FP8 weights)
+  max_model_len: null                                 # cap context to save KV memory (null = model max)
+  chat_template_kwargs: {}                            # e.g. {"enable_thinking": false}
+
+deployment:
+  mode: auto                     # auto = pick the cheapest GPU config that fits; manual = use below
+  machine_type: g4-standard-48
+  accelerator_type: NVIDIA_RTX_PRO_6000
+  accelerator_count: 1
+  extra_args: []                 # extra vLLM args, e.g. ["--max-num-seqs=256"]
+  image: null                    # override the serving image (default: Model Garden verified vLLM image)
+
+traffic:
+  # Option A: your own hourly series (168 rows, Monday 00:00 UTC first, column input_tokens_per_sec)
+  hourly_csv: null
+  # Option B: a parametric week
+  peak_input_tps: 150000         # busiest hourly average, input tokens/sec
+  average_input_tps: 50000       # weekly average, input tokens/sec
+  floor_input_tps: 6000          # quietest hour
+  busy_hours_utc: [13, 20]       # weekday plateau
+  weekend_factor: 0.15           # weekend load relative to weekdays (above the floor)
+  # Option C: a named shape at your weekly average (overrides Option B's peak / floor / busy hours / weekend):
+  # us_core_hours | us_europe | follow_the_sun | steady
+  preset: null
+
+requests:
+  avg_input_tokens: 5000
+  avg_output_tokens: 500         # visible answer tokens; thinking is added on top (below)
+  pct_over_32k: 1.0              # % of requests with > 32K input tokens
+  pct_over_128k: 0.2
+  system_prompt_tokens: 1500     # fixed, identical across requests -> prefix-cacheable
+  system_prompt_cache_hit: 0.9
+  cached_input_tokens: null      # optional: cached tokens per request (e.g. resent chat history); null = system prompt x hit
+  thinking_share: 0.10           # share of requests with thinking on
+  avg_thinking_tokens: 1000      # extra output tokens per thinking request (here 500 + 10% x 1,000 = 600 on average)
+
+maas:                            # managed API you compare against (per 1M tokens)
+  input_per_m: 0.15
+  output_per_m: 0.60
+  cached_per_m: 0.015
+  max_rps: 10                    # rate limit before HTTP 429 (0 = no MaaS overflow)
+
+hybrid:                          # targets: open_maas | gemini_flash_lite | gemini_flash | gemini_pro | gemini_4 | a Gemini model id
+  peak_overflow_target: open_maas   # where peak hours spill beyond the fleet (open_maas = no Gemini at peaks)
+  route_long: false                 # true = send prompts over 32K to route_long_target instead of the fleet
+  route_long_target: gemini_flash_lite
+  failover_target: gemini_flash_lite  # serves outages; also prices the baseline's traffic above the MaaS limit
+
+constraints:
+  latency_budget_s: 600          # max acceptable p95 latency (queueing included)
+  burst_headroom: 1.3            # capacity / hourly average, to absorb sub-hour bursts
+  resilience_multiplier: 1.0     # 1.5 = zone-redundant, 2.0 = two regions
+
+prompts:
+  source: synthetic              # synthetic | file
+  file: null                     # JSONL: {"messages": [...], "max_tokens": 400, "response_format": {...}}
+  synthetic:
+    domain: >-
+      Extract vendor, dates, totals and line items from invoices and purchase orders, and flag
+      documents that need human review.
+    num_system_prompts: 6
+    count: 1500
+    json_output: true
+    match_output_length: true    # ask for answers of ~avg_output_tokens (false = short answers, flatters throughput)
+
+loadtest:
+  concurrency: [16, 32, 64, 128]
+  requests_per_level: 300
+  preflight: true                # one long answer + one long prompt before the sweep; false = skip
+
+throughput:                      # optional measured input tok/s per chip for long prompts in mixed traffic
+  medium_tps: null               # 32K-128K prompts (null = 3x slower than short; a calibrated benchmark fills it)
+  large_tps: null                # >128K prompts (null = 4x slower)
+
+pricing:
+  tier: auto                     # headline pricing: auto (cheapest) | vertex | vertex_cud_1y | vertex_cud_3y | cud_1y | cud_3y
+  overrides: {}                  # optional manual overrides, $ per GPU-hour incl. host share                  # e.g. {vertex: 5.85, vertex_cud_1y: 3.71, vertex_cud_3y: 2.52, cud_1y: 3.11, cud_3y: 1.98}

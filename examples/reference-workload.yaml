@@ -1,0 +1,78 @@
+# Reference workload "reference-v1": the fixed workload behind the per-GPU numbers in catalog.REFERENCE_BENCHMARKS.
+#
+# Every published reference number is measured on exactly this workload, so GPUs can be compared with each other:
+# Gemma 4 26B-A4B at FP8, ~5,000-token prompts (incl. a 1,800-token system prompt, ~90% prefix-cache hits),
+# ~500-token JSON answers, thinking off, no prompt over 32K, served by the pinned vLLM image.
+# The tool scales these numbers to your model and output length when you have no benchmark of your own.
+# They are NOT a promise for other workloads: prompt sizes, thinking, long prompts and caching change throughput by
+# several times. Run a benchmark with your own prompts before deciding.
+#
+# Measure one GPU (copy, set the hardware, run end to end; the endpoint is torn down at the end):
+#   mkdir -p runs/ref-h100 && cp examples/reference-workload.yaml runs/ref-h100/workload.yaml
+#   # edit name + deployment.* below, then:
+#   dilemma auto -c runs/ref-h100/workload.yaml
+#   dilemma reference-entry -c runs/ref-h100/workload.yaml     # prints the catalog.REFERENCE_BENCHMARKS entry
+
+name: ref-rtx-pro-6000           # one run name per GPU; artifacts go to runs/<name>/
+project: my-gcp-project
+region: us-central1
+
+model:
+  model_garden_id: google/gemma4@gemma-4-26b-a4b-it
+  hf_id: google/gemma-4-26b-a4b-it
+  precision: fp8                 # vLLM on-the-fly FP8 (--quantization=fp8)
+  max_model_len: 32768           # no prompt over 32K; also leaves KV-cache room on small GPUs (L4)
+  chat_template_kwargs: {enable_thinking: false}
+
+deployment:
+  mode: manual                   # the GPU under test
+  accelerator_type: NVIDIA_RTX_PRO_6000   # NVIDIA_L4 | NVIDIA_RTX_PRO_6000 | NVIDIA_A100_80GB | NVIDIA_H100_80GB | ...
+  accelerator_count: 1
+  machine_type: g4-standard-48   # g2-standard-24 (2x L4) | g2-standard-48 (4x L4) | a2-ultragpu-1g | a3-highgpu-1g
+  extra_args: []
+  # catalog.SERVING_IMAGES "pinned" (pytorch-vllm-serve:gemma4, by digest): the same image on every GPU
+  image: us-docker.pkg.dev/vertex-ai/vertex-vision-model-garden-dockers/pytorch-vllm-serve@sha256:3fbc0e08c46e7736145c9effbcc8839682c80b15b413335146f4428fc3523c8a
+
+traffic:                         # only used by the report's cost section; irrelevant to the per-GPU number
+  preset: steady
+  average_input_tps: 30000
+  peak_input_tps: 30000
+  floor_input_tps: 30000
+
+requests:
+  avg_input_tokens: 5000         # total input, system prompt included
+  avg_output_tokens: 500         # answer tokens
+  thinking_share: 0.0
+  pct_over_32k: 0.0
+  pct_over_128k: 0.0
+  system_prompt_tokens: 1800
+  system_prompt_cache_hit: 0.9
+
+maas:
+  input_per_m: 0.15
+  output_per_m: 0.60
+  cached_per_m: 0.015
+  max_rps: 15
+
+constraints:
+  latency_budget_s: 600
+  burst_headroom: 1.3
+  resilience_multiplier: 1.0
+
+prompts:
+  source: synthetic
+  synthetic:
+    domain: >-
+      Review the attached records, classify the main issue, score its urgency and explain the decision.
+    num_system_prompts: 4
+    count: 1400                  # fresh prompts at every level, also with the 128 level
+    json_output: true
+    match_output_length: true    # ask for ~500-token answers (the default synthetic answers are short)
+
+loadtest:
+  concurrency: [16, 32, 64]      # 80-96 GB GPUs (RTX PRO 6000, A100 80GB, H100): [16, 32, 64, 128]
+  requests_per_level: 300
+  preflight: true
+
+pricing:
+  tier: auto

@@ -1,0 +1,30 @@
+# Minimal auto-mode definition: pick a model and describe your traffic in a few numbers.
+# dilemma auto -c examples/auto.yaml
+name: quick-check
+project: my-gcp-project
+region: us-central1
+
+model:
+  model_garden_id: google/gemma4@gemma-4-26b-a4b-it
+  hf_id: google/gemma-4-26b-a4b-it
+
+traffic:
+  peak_input_tps: 200000
+  average_input_tps: 60000
+  floor_input_tps: 5000
+
+requests:
+  avg_input_tokens: 6000
+  avg_output_tokens: 300
+  system_prompt_tokens: 2000
+
+maas:
+  input_per_m: 0.15
+  output_per_m: 0.60
+  cached_per_m: 0.015
+  max_rps: 20
+
+prompts:
+  source: synthetic
+  synthetic:
+    domain: Summarize customer support tickets and classify urgency and product area.

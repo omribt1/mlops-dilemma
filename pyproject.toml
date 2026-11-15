@@ -1,0 +1,33 @@
+[project]
+name = "aiops-dilemma"
+version = "0.1.0"
+description = "Benchmark an open model on Agent Platform endpoints and find when self-hosting pays off vs a managed model API (MaaS)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "numpy>=2.0",
+    "pyyaml>=6.0",
+    "httpx>=0.27",
+    "requests>=2.31",
+    "google-auth>=2.30",
+    "google-cloud-aiplatform>=1.70",
+    "google-genai>=1.0",
+    "tokenizers>=0.20",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "python-multipart>=0.0.9",
+]
+
+[project.scripts]
+dilemma = "aiops_dilemma.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aiops_dilemma"]

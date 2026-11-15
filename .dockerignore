@@ -1,0 +1,26 @@
+# Keep the build context small and free of sessions, credentials and local state.
+.git
+.gitignore
+.venv
+**/__pycache__
+**/*.py[oc]
+.pytest_cache
+.ruff_cache
+.mypy_cache
+runs/
+**/runs/*
+!blog/example/runs/
+!blog/example/runs/**
+dist/
+*.egg-info
+tests/
+docs/
+deploy/
+blog/*
+!blog/example/
+!blog/example/**
+.env
+*.json.key
+application_default_credentials.json
+Dockerfile
+.dockerignore

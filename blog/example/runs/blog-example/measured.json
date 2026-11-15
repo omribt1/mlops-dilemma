@@ -1,0 +1,14 @@
+{
+  "estimated": true,
+  "levels": [],
+  "peak": null,
+  "endpoint": {
+    "accelerator_type": "NVIDIA_RTX_PRO_6000",
+    "accelerator_count": 1,
+    "machine_type": "g4-standard-48"
+  },
+  "input_tps_per_gpu": 9000.0,
+  "throughput_source": "override",
+  "throughput_label": "Assumed 9,000 input tok/s per chip: an assumption for this illustrative example (thinking-heavy output), not measured. Run a benchmark to measure it.",
+  "measured_out_ratio": null
+}

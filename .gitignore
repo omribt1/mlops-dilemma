@@ -1,0 +1,35 @@
+# Python / tooling
+__pycache__/
+*.py[oc]
+*.egg-info
+dist/
+build/
+.venv
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# User sessions, benchmark runs and local state (the blog's example run lives under blog/example/runs/)
+/runs/
+
+# Credentials and secrets: never commit
+.env
+.env.*
+*.json.key
+*-key.json
+application_default_credentials.json
+hf_token
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# Local working notes and generated review copies (not part of the public repo)
+CLAUDE.md
+.claude/
+blog/STYLE_NOTES.md
+blog/*.html

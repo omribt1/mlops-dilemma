@@ -1,0 +1,25 @@
+# Source uploaded by `gcloud builds submit` (deploy/cloudrun.sh). Without this file gcloud would fall back to
+# .gitignore. Keep sessions, local state and credentials out of the upload; .dockerignore filters the build too.
+.gcloudignore
+.git
+.gitignore
+.venv
+**/__pycache__
+**/*.py[oc]
+.pytest_cache
+.ruff_cache
+.mypy_cache
+/runs/
+dist/
+*.egg-info
+tests/
+docs/
+deploy/
+blog/*
+!blog/example/
+!blog/example/**
+.env
+*.json.key
+application_default_credentials.json
+CLAUDE.md
+.claude/

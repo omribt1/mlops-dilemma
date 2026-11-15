@@ -1,0 +1,651 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Self-hosting vs MaaS — sensitivity & resilience dashboard</title>
+<style>
+.viz-root {
+  color-scheme: light;
+  --surface-0: #f4f4f2; --surface-1: #fcfcfb; --surface-2: #f0efec;
+  --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #7a7974;
+  --grid: #e6e5e1; --border: #dddcd7;
+  --series-gpu: #2a78d6; --series-maas: #eb6834; --series-long: #1baf7a;
+  --accent: #2a78d6; --warn: #b45309;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .viz-root {
+    color-scheme: dark;
+    --surface-0: #121211; --surface-1: #1a1a19; --surface-2: #242422;
+    --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+    --grid: #2e2e2b; --border: #3a3a36;
+    --series-gpu: #3987e5; --series-maas: #d95926; --series-long: #199e70;
+    --accent: #3987e5; --warn: #f59e0b;
+  }
+}
+:root[data-theme="dark"] .viz-root {
+  color-scheme: dark;
+  --surface-0: #121211; --surface-1: #1a1a19; --surface-2: #242422;
+  --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+  --grid: #2e2e2b; --border: #3a3a36;
+  --series-gpu: #3987e5; --series-maas: #d95926; --series-long: #199e70;
+  --accent: #3987e5; --warn: #f59e0b;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+.viz-root { background: var(--surface-0); color: var(--text-primary); min-height: 100vh; }
+header { padding: 20px 28px 8px; display: flex; gap: 16px; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; }
+h1 { margin: 0; font-size: 20px; }
+.sub { color: var(--text-secondary); margin-top: 4px; max-width: 900px; }
+.actions { display: flex; gap: 8px; }
+.disclaimer { margin: 4px 28px 8px; padding: 8px 12px; max-width: 900px; border: 1px solid var(--warn); border-left-width: 4px;
+  border-radius: 6px; background: var(--surface-1); color: var(--text-primary); }
+.disclaimer strong { color: var(--warn); }
+button { font: inherit; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary); cursor: pointer; }
+button.primary { background: var(--accent); color: #fff; border-color: transparent; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.layout { display: grid; grid-template-columns: 360px 1fr; align-items: start; gap: 20px; padding: 12px 28px 28px; }
+@media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } }
+aside { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; align-self: start; }
+aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); margin: 16px 0 6px; }
+aside h2:first-child { margin-top: 2px; }
+.ctl { margin: 8px 0 12px; }
+.ctl label { display: flex; justify-content: space-between; gap: 8px; color: var(--text-secondary); font-size: 13px; }
+.ctl label output { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ctl input[type=range] { width: 100%; accent-color: var(--accent); }
+.ctl select { width: 100%; padding: 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary); font: inherit; }
+.ctl .hint { color: var(--text-muted); font-size: 12px; }
+.ctl.check label { justify-content: flex-start; gap: 8px; color: var(--text-primary); }
+.ctl.changed label > span::after { content: " •"; color: var(--accent); }
+main { display: grid; gap: 16px; min-width: 0; align-content: start; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+.tile .k { color: var(--text-secondary); font-size: 12px; }
+.tile .v { font-size: 24px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.tile .d { color: var(--text-muted); font-size: 12px; }
+.tile.hero .v { color: var(--text-primary); }
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; min-width: 0; }
+.card h3 { margin: 0; font-size: 15px; }
+.card .cap { color: var(--text-secondary); font-size: 13px; margin: 2px 0 8px; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; color: var(--text-secondary); font-size: 12px; margin-bottom: 6px; }
+.legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+.legend i.box { height: 10px; width: 10px; border-radius: 2px; }
+svg { display: block; width: 100%; height: auto; overflow: visible; }
+svg text { fill: var(--text-secondary); font-size: 11px; }
+svg .axis line, svg .grid line { stroke: var(--grid); stroke-width: 1; }
+svg .label-strong { fill: var(--text-primary); font-weight: 600; }
+.tip { position: fixed; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.12); display: none; z-index: 10; min-width: 160px; }
+.tip .t { color: var(--text-muted); margin-bottom: 4px; }
+.tip .r { display: flex; align-items: center; gap: 8px; }
+.tip .r b { font-variant-numeric: tabular-nums; min-width: 58px; display: inline-block; }
+.tip .r i { width: 12px; height: 2px; display: inline-block; border-radius: 2px; }
+.verdict { font-size: 17px; line-height: 1.45; margin: 0 0 12px; color: var(--text-primary); }
+.verdict .sub { display: block; font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+.verdict .hint button { font: inherit; font-weight: 600; color: var(--text-primary); background: none; border: 1px solid currentColor; border-radius: 4px; padding: 0 6px; cursor: pointer; }
+.warnbox { border-left: 3px solid var(--warn); padding: 8px 12px; background: var(--surface-2); border-radius: 6px; display: none; }
+details summary { cursor: pointer; color: var(--text-secondary); }
+table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--grid); }
+th { color: var(--text-secondary); font-weight: 600; }
+table.mini th, table.mini td { text-align: right; padding: 5px 6px; font-size: 12.5px; }
+table.mini th:first-child, table.mini td:first-child { text-align: left; }
+footer { color: var(--text-muted); font-size: 12px; padding: 0 28px 28px; max-width: 1100px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 1250px) { .two { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="viz-root">
+<header>
+  <div>
+    <h1 id="title">Self-hosting vs MaaS — cost sensitivity & Gemini resilience</h1>
+    <div class="sub" id="subtitle"></div>
+  </div>
+  <div class="actions">
+    <button id="theme" type="button" aria-label="Toggle light/dark theme">◐ Theme</button>
+    <button id="reset" class="primary" type="button">Reset to analysis defaults</button>
+  </div>
+</header>
+
+<div class="layout">
+<aside id="controls" aria-label="Assumptions"></aside>
+
+<main>
+  <div class="warnbox" id="warn" role="status"></div>
+  <p class="verdict" id="verdict" aria-live="polite"></p>
+  <div class="tiles" id="tiles"></div>
+
+  <div class="card">
+    <h3>Weekly load vs. fixed GPU/TPU fleet</h3>
+    <div class="cap" id="loadCap"></div>
+    <div class="legend" id="loadLegend"></div>
+    <svg id="loadChart" viewBox="0 0 900 260" role="img" aria-label="Hourly input tokens per second over a week, with GPU/TPU fleet capacity and MaaS/Gemini overflow"></svg>
+  </div>
+
+  <div class="two">
+    <div class="card">
+      <h3>Monthly cost by deployment option</h3>
+      <div class="cap">Same fleet and load, different pricing. Vertical line = the pay-per-token baseline: MaaS only when its rate limit can serve your peak, otherwise MaaS up to its limit plus overflow to the failover Gemini tier.</div>
+      <svg id="costChart" viewBox="0 0 520 262" role="img" aria-label="Monthly cost per deployment option"></svg>
+    </div>
+    <div class="card">
+      <h3>Effect of off-peak growth</h3>
+      <div class="cap">Busiest hour unchanged; off-peak hours grow (e.g. customers in other time zones). Selected option vs the baseline.</div>
+      <div class="legend" id="sensLegend"></div>
+      <svg id="sensChart" viewBox="0 0 520 230" role="img" aria-label="Monthly cost vs off-peak load multiplier"></svg>
+    </div>
+  </div>
+
+  <div class="two">
+    <div class="card">
+      <h3>Resilience: Layer-3 Google Gemini on Agent Platform vs. Always-On Redundancy</h3>
+      <div class="cap">Layer 1 = your GPU/TPU fleet, Layer 2 = Open-Model MaaS (up to its req/s limit), Layer 3 = Google Gemini on Agent Platform (pay-per-use, $0 when idle).</div>
+      <table id="incidentTable" class="mini"></table>
+      <div class="cap" id="incidentNote"></div>
+    </div>
+    <div class="card">
+      <h3>Long-Context (>32K) & Peak Traffic Diversion</h3>
+      <div class="cap">Even 1–5% of requests above 32K tokens can consume over half of self-hosted GPU/TPU time. Diverting >32K prompts to Gemini on Agent Platform shrinks the base fleet.</div>
+      <table id="routingTable" class="mini"></table>
+      <div class="cap" id="routingNote"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <details>
+      <summary>Table view & model details</summary>
+      <table id="detailTable"></table>
+    </details>
+  </div>
+</main>
+</div>
+
+<footer>
+  <span id="tpFoot">Throughput measured on an Agent Platform endpoint with the run's prompt set.</span> GPU/TPU list prices and Gemini token prices from the Cloud Billing Catalog;
+  "Agent Platform + reservation" = Compute Engine reservation with a committed-use discount plus the Agent Platform management fee
+  (Flexible Savings Plan −10% / −20%). Fleets are fixed (no autoscaling) and sized for the busiest hour with burst headroom;
+  Open-Model MaaS or Google Gemini on Agent Platform absorbs overflow and optional >32K long-context routing. Generated by aiops-dilemma — estimates, not a quote.
+</footer>
+<div class="tip" id="tip" role="tooltip"></div>
+</div>
+
+<script>
+/*__DATA__*/
+/*__MODEL__*/
+</script>
+<script>
+(function () {
+  "use strict";
+  const M = window.DilemmaModel;
+  const $ = (id) => document.getElementById(id);
+  const fmtK = (x) => x >= 1e6 ? "$" + (x / 1e6).toFixed(2) + "M" : (x < 1000 ? "$" + Math.round(x) : "$" + Math.round(x / 1e3).toLocaleString() + "K");
+  const fmtTok = (x) => x >= 1e6 ? (x / 1e6).toFixed(2) + "M" : Math.round(x / 1e3).toLocaleString() + "K";
+  const pct = (x) => Math.round(x * 100) + "%";
+  const G = DATA.gemini || {};
+  const gName = (k, d) => (G[k] && G[k].name) || d;
+  const LITE = gName("gemini_flash_lite", "Gemini Flash-Lite");
+  const FLASH = gName("gemini_flash", "Gemini Flash");
+  const PRO = gName("gemini_pro", "Gemini Pro");
+  const G4 = gName("gemini_4", "Gemini 4");
+  const GEM_NAMES = { gemini_flash_lite: LITE, gemini_flash: FLASH, gemini_pro: PRO, gemini_4: G4, open_maas: "Open-Model MaaS" };
+  // Gemini models the config pins as targets (live model ids such as gemini-4-hydrogen) join the role aliases.
+  const PINNED = ["routeLongTarget", "peakOverflowTarget", "failoverTarget"].map((k) => DATA.defaults[k])
+    .filter((t, i, a) => t && !GEM_NAMES[t] && G[t] && a.indexOf(t) === i);
+  PINNED.forEach((t) => { GEM_NAMES[t] = G[t].name; });
+  const pinnedOpts = PINNED.map((t) => [t, G[t].name + AP]);
+  const AP = " (Agent Platform)";
+  const TP = DATA.throughput || { per_chip: DATA.perGpu, source: "measured", label: "" };
+  const TP_WORD = { measured: "Measured", calibrated: "Calibrated", override: "Assumed (set by you)", estimated: "Estimated from specs" }[TP.source] || "Estimated";
+
+  const C = [
+    { h: "Your load" },
+    { id: "offPeak", label: "Off-peak load multiplier", min: 1, max: 10, step: 0.25, fmt: (v) => v + "×",
+      hint: "Off-peak hours grow; busiest hour unchanged" },
+    { id: "growth", label: "Overall volume growth", min: 1, max: 10, step: 0.5, fmt: (v) => v + "×",
+      hint: "Scales every hour incl. the peak" },
+    { h: "Requests & Prompt Ratio" },
+    { id: "avgInput", label: "Avg input tokens / request", min: 500, max: 50000, step: 100, fmt: fmtTokN },
+    { id: "pctOver32", label: "% of requests > 32K (Medium + Long)", min: 0, max: 20, step: 0.2, fmt: (v) => v.toFixed(1) + "%" },
+    { id: "pctOver128", label: "% of requests > 128K (Long)", min: 0, max: 10, step: 0.1, fmt: (v) => v.toFixed(1) + "%" },
+    { id: "avgOutput", label: "Avg output tokens / request (visible answer)", min: 20, max: 5000, step: 10, fmt: (v) => v },
+    { id: "thinkingShare", label: "Requests using thinking", min: 0, max: 1, step: 0.05, fmt: (v) => pct(v) },
+    { id: "thinkingTokens", label: "Thinking tokens / request (when on)", min: 0, max: 20000, step: 100, fmt: (v) => v,
+      hint: "Billed and generated as output" },
+    { id: "systemPrompt", label: "Fixed system prompt (cacheable)", min: 0, max: 20000, step: 100, fmt: fmtTokN },
+    { id: "systemHit", label: "Cache hit on system prompt", min: 0, max: 100, step: 5, fmt: (v) => v + "%" },
+    { h: "Deployment & Hybrid Routing" },
+    { id: "pricing", label: "Pricing", type: "select", options: Object.entries(DATA.pricingLabels) },
+    { id: "routeLong", label: "Divert >32K prompts off GPU/TPU fleet", type: "check",
+      hint: "Routes medium/long context requests to Gemini or Open MaaS" },
+    { id: "routeLongTarget", label: "Long-context (>32K) target", type: "select",
+      options: [["gemini_flash_lite", LITE + AP],
+                ["gemini_flash", FLASH + AP],
+                ["gemini_pro", PRO + AP],
+                ["gemini_4", G4 + AP], ...pinnedOpts,
+                ["open_maas", "Open-Model MaaS (subject to RPS limit)"]] },
+    { id: "peakOverflowTarget", label: "Peak overflow target", type: "select",
+      options: [["open_maas", "Open-Model MaaS"],
+                ["gemini_flash_lite", LITE + AP],
+                ["gemini_flash", FLASH + AP],
+                ["gemini_pro", PRO + AP],
+                ["gemini_4", G4 + AP], ...pinnedOpts] },
+    { id: "failoverTarget", label: "Failover / beyond-limit target", type: "select",
+      hint: "Takes traffic beyond the MaaS limit; also prices the baseline",
+      options: [["gemini_flash_lite", LITE + AP],
+                ["gemini_flash", FLASH + AP],
+                ["gemini_pro", PRO + AP],
+                ["gemini_4", G4 + AP], ...pinnedOpts] },
+    { id: "resilience", label: "Hardware redundancy", type: "select",
+      options: [["1", "Single zone (+ Gemini Layer-3 failover)"], ["1.5", "Zone-redundant (≈1.5× chips)"], ["2", "Two regions (2× chips)"]] },
+    { id: "tputMult", label: TP.source === "measured" ? "Throughput vs benchmark" : "Throughput vs assumed", min: 0.5, max: 2, step: 0.05, fmt: (v) => v.toFixed(2) + "×" },
+    { id: "maasRps", label: "Open MaaS rate limit (req/s)", min: 0, max: 200, step: 1, fmt: (v) => v },
+    { id: "headroom", label: "Burst headroom over hourly avg", min: 1, max: 2, step: 0.05, fmt: (v) => v.toFixed(2) + "×" },
+    { h: "Open MaaS prices ($ per 1M tokens)" },
+    { id: "maasIn", label: "Input", min: 0.01, max: 5, step: 0.005, fmt: (v) => "$" + v.toFixed(3) },
+    { id: "maasOut", label: "Output", min: 0.01, max: 20, step: 0.01, fmt: (v) => "$" + v.toFixed(2) },
+    { id: "maasCached", label: "Cached input", min: 0, max: 2, step: 0.001, fmt: (v) => "$" + v.toFixed(3) },
+    { h: "Google Gemini on Agent Platform ($ per 1M)" },
+    { id: "liteIn", label: LITE + " · input", min: 0.02, max: 2, step: 0.01, fmt: (v) => "$" + v.toFixed(2) },
+    { id: "liteOut", label: LITE + " · output", min: 0.05, max: 10, step: 0.05, fmt: (v) => "$" + v.toFixed(2) },
+    { id: "flashIn", label: FLASH + " · input", min: 0.05, max: 6, step: 0.05, fmt: (v) => "$" + v.toFixed(2) },
+    { id: "flashOut", label: FLASH + " · output", min: 0.1, max: 30, step: 0.1, fmt: (v) => "$" + v.toFixed(2) },
+    { id: "proIn", label: PRO + " · input", min: 0.1, max: 10, step: 0.05, fmt: (v) => "$" + v.toFixed(2) },
+    { id: "proOut", label: PRO + " · output", min: 0.5, max: 50, step: 0.5, fmt: (v) => "$" + v.toFixed(2) },
+    { id: "g4In", label: G4 + " · input", min: 0.1, max: 20, step: 0.05, fmt: (v) => "$" + v.toFixed(2) },
+    { id: "g4Out", label: G4 + " · output", min: 0.5, max: 100, step: 0.5, fmt: (v) => "$" + v.toFixed(2) },
+  ];
+  function fmtTokN(v) { return (v / 1000).toFixed(1) + "K"; }
+
+  const state = {};
+  function resetState() {
+    Object.assign(state, JSON.parse(JSON.stringify(DATA.defaults)));
+    state.resilience = String(+state.resilience >= 1 ? +state.resilience : 1);
+  }
+
+  function buildControls() {
+    const box = $("controls");
+    box.textContent = "";
+    for (const c of C) {
+      if (c.h) { const h = document.createElement("h2"); h.textContent = c.h; box.appendChild(h); continue; }
+      const wrap = document.createElement("div");
+      wrap.className = "ctl" + (c.type === "check" ? " check" : "");
+      wrap.dataset.id = c.id;
+      const lab = document.createElement("label");
+      const span = document.createElement("span"); span.textContent = c.label;
+      let input;
+      if (c.type === "select") {
+        lab.appendChild(span); wrap.appendChild(lab);
+        input = document.createElement("select");
+        for (const [v, t] of c.options) { const o = document.createElement("option"); o.value = v; o.textContent = t; input.appendChild(o); }
+        input.value = String(state[c.id]);
+        input.addEventListener("change", () => { state[c.id] = input.value; update(); });
+        lab.htmlFor = "c_" + c.id;
+        wrap.appendChild(input);
+      } else if (c.type === "check") {
+        input = document.createElement("input"); input.type = "checkbox"; input.checked = !!state[c.id];
+        input.addEventListener("change", () => { state[c.id] = input.checked; update(); });
+        lab.appendChild(input); lab.appendChild(span); wrap.appendChild(lab);
+      } else {
+        const out = document.createElement("output");
+        lab.appendChild(span); lab.appendChild(out); wrap.appendChild(lab);
+        input = document.createElement("input"); input.type = "range";
+        input.min = c.min; input.max = c.max; input.step = c.step; input.value = state[c.id];
+        const sync = () => { out.textContent = c.fmt(+input.value); };
+        input.addEventListener("input", () => { state[c.id] = +input.value; sync(); update(); });
+        sync();
+        wrap.appendChild(input);
+      }
+      input.id = "c_" + c.id;
+      lab.htmlFor = input.id;
+      if (c.hint) { const h = document.createElement("div"); h.className = "hint"; h.textContent = c.hint; wrap.appendChild(h); }
+      box.appendChild(wrap);
+    }
+  }
+
+  function markChanged() {
+    const d = DATA.defaults;
+    document.querySelectorAll(".ctl").forEach((el) => {
+      const id = el.dataset.id;
+      const def = id === "resilience" ? String(+d.resilience >= 1 ? +d.resilience : 1) : d[id];
+      el.classList.toggle("changed", String(state[id]) !== String(def));
+    });
+  }
+
+  function params(over) {
+    const p = Object.assign({}, state, over || {});
+    p.resilience = +p.resilience;
+    if (p.pctOver128 > p.pctOver32) p.pctOver128 = p.pctOver32;
+    return p;
+  }
+
+  const NS = "http://www.w3.org/2000/svg";
+  function el(tag, attrs, parent, text) {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (text != null) e.textContent = text;
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  const css = (v) => getComputedStyle(document.querySelector(".viz-root")).getPropertyValue(v).trim();
+  const tip = $("tip");
+  function showTip(evt, title, rows) {
+    tip.textContent = "";
+    const t = document.createElement("div"); t.className = "t"; t.textContent = title; tip.appendChild(t);
+    for (const [color, value, label] of rows) {
+      const r = document.createElement("div"); r.className = "r";
+      const i = document.createElement("i"); i.style.background = color; r.appendChild(i);
+      const b = document.createElement("b"); b.textContent = value; r.appendChild(b);
+      const s = document.createElement("span"); s.textContent = label; r.appendChild(s);
+      tip.appendChild(r);
+    }
+    tip.style.display = "block";
+    const x = Math.min(window.innerWidth - tip.offsetWidth - 12, evt.clientX + 14);
+    const y = Math.min(window.innerHeight - tip.offsetHeight - 12, evt.clientY + 14);
+    tip.style.left = x + "px"; tip.style.top = y + "px";
+  }
+  const hideTip = () => { tip.style.display = "none"; };
+  function niceMax(v) {
+    const p = Math.pow(10, Math.floor(Math.log10(v || 1)));
+    for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p;
+    return 10 * p;
+  }
+  function legend(id, items) {
+    const box = $(id); box.textContent = "";
+    for (const [color, label, box_] of items) {
+      const s = document.createElement("span");
+      const i = document.createElement("i"); if (box_) i.className = "box"; i.style.background = color;
+      s.appendChild(i); s.appendChild(document.createTextNode(label)); box.appendChild(s);
+    }
+  }
+
+  const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  function drawLoad(r) {
+    const svg = $("loadChart"); svg.textContent = "";
+    const W = 900, H = 260, L = 52, R = 12, T = 10, B = 26;
+    const D = r.demand;
+    const share = r.routing ? r.buckets.small.tokenShare : 1;
+    const gpuCap = r.fleet ? r.fleet.gpus * r.capPerGpu * 0.85 : 0;
+    const longPart = (d) => r.routing ? d * (1 - share) : 0;
+    const gpuPart = (d) => Math.min(d - longPart(d), gpuCap);
+    const ymax = niceMax(Math.max(...D, gpuCap) * 1.08);
+    const x = (i) => L + (i / (D.length - 1)) * (W - L - R);
+    const y = (v) => T + (1 - v / ymax) * (H - T - B);
+    const g = el("g", { class: "grid" }, svg);
+    for (let k = 0; k <= 4; k++) {
+      const v = (ymax * k) / 4;
+      el("line", { x1: L, x2: W - R, y1: y(v), y2: y(v) }, g);
+      el("text", { x: L - 6, y: y(v) + 4, "text-anchor": "end" }, svg, fmtTok(v));
+    }
+    for (let d = 0; d < 7; d++) el("text", { x: x(d * 24 + 12), y: H - 8, "text-anchor": "middle" }, svg, DAYS[d]);
+    const gpu = css("--series-gpu"), maas = css("--series-maas"), lng = css("--series-long");
+    const band = (lo, hi, color, op) => {
+      const top = D.map((d, i) => (i ? "L" : "M") + x(i).toFixed(1) + "," + y(hi(d)).toFixed(1)).join(" ");
+      const bot = D.map((d, i) => i).reverse().map((i) => "L" + x(i).toFixed(1) + "," + y(lo(D[i])).toFixed(1)).join(" ");
+      el("path", { d: top + " " + bot + " Z", fill: color, "fill-opacity": op }, svg);
+    };
+    band(() => 0, gpuPart, gpu, 0.18);
+    if (r.routing) band(gpuPart, (d) => gpuPart(d) + longPart(d), lng, 0.28);
+    band((d) => gpuPart(d) + longPart(d), (d) => d, maas, 0.35);
+    el("path", { d: D.map((d, i) => (i ? "L" : "M") + x(i).toFixed(1) + "," + y(d).toFixed(1)).join(" "),
+                 fill: "none", stroke: css("--text-secondary"), "stroke-width": 2, "stroke-linejoin": "round" }, svg);
+    if (r.fleet) {
+      el("line", { x1: L, x2: W - R, y1: y(gpuCap), y2: y(gpuCap), stroke: gpu, "stroke-width": 2 }, svg);
+      el("text", { x: W - R, y: y(gpuCap) - 6, "text-anchor": "end", class: "label-strong" }, svg,
+        `Fleet capacity · ${r.fleet.gpus} ${DATA.meta.kind === "tpu" ? "TPU chips" : "GPUs"}`);
+    }
+    const hair = el("line", { x1: 0, x2: 0, y1: T, y2: H - B, stroke: css("--text-muted"), "stroke-width": 1, visibility: "hidden" }, svg);
+    const hit = el("rect", { x: L, y: T, width: W - L - R, height: H - T - B, fill: "transparent" }, svg);
+    hit.addEventListener("pointermove", (e) => {
+      const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+      const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+      const i = Math.max(0, Math.min(D.length - 1, Math.round(((p.x - L) / (W - L - R)) * (D.length - 1))));
+      hair.setAttribute("x1", x(i)); hair.setAttribute("x2", x(i)); hair.setAttribute("visibility", "visible");
+      const d = D[i], lp = longPart(d), gp = gpuPart(d), mp = Math.max(0, d - gp - lp);
+      const rows = [[css("--text-secondary"), fmtTok(d) + "/s", "total input tokens"], [gpu, fmtTok(gp) + "/s", "served by fleet"]];
+      if (r.routing) rows.push([lng, fmtTok(lp) + "/s", ">32K → " + state.routeLongTarget]);
+      rows.push([maas, fmtTok(mp) + "/s", "overflow → " + state.peakOverflowTarget]);
+      showTip(e, `${DAYS[Math.floor(i / 24)]} ${String(i % 24).padStart(2, "0")}:00 UTC`, rows);
+    });
+    hit.addEventListener("pointerleave", () => { hair.setAttribute("visibility", "hidden"); hideTip(); });
+    const items = [[css("--text-secondary"), "Input tokens/s (hourly avg)"], [gpu, "Fleet capacity"],
+                   [gpu, "Served by fleet", true]];
+    if (r.routing) items.push([lng, ">32K prompts diverted", true]);
+    items.push([maas, "Peak overflow", true]);
+    legend("loadLegend", items);
+    $("loadCap").textContent = r.fleet
+      ? `Fixed fleet sized for the busiest hour (${fmtTok(Math.max(...D))} tok/s × ${state.headroom.toFixed(2)} burst headroom). ` +
+        `Average utilization ${pct(r.fleet.util)}.`
+      : "";
+  }
+
+  function drawCost(r) {
+    const svg = $("costChart"); svg.textContent = "";
+    const W = 520, H = 262, L = 210, R = 70, T = 24, B = 22;
+    const opts = Object.keys(DATA.pricingLabels).map((k) => {
+      const s = M.scenario(DATA, params({ pricing: k }));
+      return { k, label: DATA.pricingLabels[k], s };
+    });
+    const vals = opts.map((o) => o.s.total || 0);
+    const bt = r.baseline.total;
+    const xmax = niceMax(Math.max(...vals, bt) * 1.08);
+    const x = (v) => L + (v / xmax) * (W - L - R);
+    const band = (H - T - B) / opts.length;
+    const g = el("g", { class: "grid" }, svg);
+    for (let k = 0; k <= 4; k++) {
+      const v = (xmax * k) / 4;
+      el("line", { x1: x(v), x2: x(v), y1: T, y2: H - B }, g);
+      el("text", { x: x(v), y: H - 6, "text-anchor": "middle" }, svg, fmtK(v));
+    }
+    const gpuC = css("--series-gpu"), maasC = css("--series-maas"), lngC = css("--series-long");
+    opts.forEach((o, i) => {
+      const cy = T + band * i + band / 2;
+      const h = Math.min(22, band * 0.6);
+      el("text", { x: L - 8, y: cy + 4, "text-anchor": "end", class: o.k === state.pricing ? "label-strong" : "" }, svg, o.label);
+      if (o.s.infeasible) { el("text", { x: L + 4, y: cy + 4 }, svg, "n/a"); return; }
+      const segs = [[o.s.gpuCost, gpuC, "Hardware"], [o.s.fleet.maasCost + (o.s.geminiOverflowCost || 0), maasC, "Overflow"],
+                    [o.s.longMaasCost, lngC, ">32K Diverted"]];
+      let x0 = L;
+      const grp = el("g", { tabindex: 0, role: "img", "aria-label": `${o.label}: ${fmtK(o.s.total)} per month` }, svg);
+      segs.forEach(([v, c], j) => {
+        if (v <= 0) return;
+        const w = Math.max(0, x(v) - L - (j ? 2 : 0));
+        el("rect", { x: x0 + (j ? 2 : 0), y: cy - h / 2, width: w, height: h, fill: c, rx: 2,
+                     opacity: o.k === state.pricing ? 1 : 0.55 }, grp);
+        x0 += w + (j ? 2 : 0);
+      });
+      el("text", { x: x0 + 6, y: cy + 4, class: o.k === state.pricing ? "label-strong" : "" }, svg, fmtK(o.s.total));
+      const hitR = el("rect", { x: L, y: cy - band / 2, width: W - L, height: band, fill: "transparent" }, svg);
+      const rows = [[gpuC, fmtK(o.s.gpuCost), `Hardware (${o.s.gpus})`], [maasC, fmtK(o.s.fleet.maasCost), "Peak overflow"]];
+      if (o.s.longMaasCost) rows.push([lngC, fmtK(o.s.longMaasCost), ">32K diverted"]);
+      if (o.s.geminiOverflowCost) rows.push([maasC, fmtK(o.s.geminiOverflowCost), "Beyond MaaS limit → " + GEM_NAMES[o.s.failoverTarget]]);
+      rows.push([css("--text-secondary"), fmtK(o.s.total), `total · ${pct(o.s.vsBaseline)} of ${baseWord(o.s)}`]);
+      hitR.addEventListener("pointermove", (e) => showTip(e, o.label, rows));
+      hitR.addEventListener("pointerleave", hideTip);
+    });
+    el("line", { x1: x(bt), x2: x(bt), y1: T - 6, y2: H - B, stroke: css("--text-primary"), "stroke-width": 1.5 }, svg);
+    el("text", { x: x(bt), y: T - 10, "text-anchor": "middle", class: "label-strong" }, svg,
+      (r.maasOnlyFeasible ? "MaaS-only " : "MaaS + overflow ") + fmtK(bt));
+  }
+
+  function drawSens() {
+    const svg = $("sensChart"); svg.textContent = "";
+    const W = 520, H = 230, L = 52, R = 70, T = 10, B = 26;
+    const KMAX = 10;
+    const xs = []; for (let k = 1; k <= KMAX + 0.001; k += 0.5) xs.push(+k.toFixed(2));
+    const pts = xs.map((k) => { const s = M.scenario(DATA, params({ offPeak: k })); return { k, fleet: s.total || NaN, maas: s.baseline.total }; });
+    const ymax = niceMax(Math.max(...pts.map((p) => Math.max(p.fleet || 0, p.maas))) * 1.1);
+    const x = (k) => L + ((k - 1) / (KMAX - 1)) * (W - L - R);
+    const y = (v) => T + (1 - v / ymax) * (H - T - B);
+    const g = el("g", { class: "grid" }, svg);
+    for (let i = 0; i <= 4; i++) {
+      const v = (ymax * i) / 4;
+      el("line", { x1: L, x2: W - R, y1: y(v), y2: y(v) }, g);
+      el("text", { x: L - 6, y: y(v) + 4, "text-anchor": "end" }, svg, fmtK(v));
+    }
+    for (let k = 1; k <= KMAX; k++) el("text", { x: x(k), y: H - 8, "text-anchor": "middle" }, svg, k + "×");
+    const gpuC = css("--series-gpu"), maasC = css("--series-maas");
+    const line = (key) => pts.filter((p) => !isNaN(p[key])).map((p, i) => (i ? "L" : "M") + x(p.k) + "," + y(p[key])).join(" ");
+    el("path", { d: line("maas"), fill: "none", stroke: maasC, "stroke-width": 2 }, svg);
+    el("path", { d: line("fleet"), fill: "none", stroke: gpuC, "stroke-width": 2 }, svg);
+    const last = pts[pts.length - 1];
+    el("text", { x: W - R + 6, y: y(last.maas) + 4 }, svg, "Baseline");
+    if (!isNaN(last.fleet)) el("text", { x: W - R + 6, y: y(last.fleet) + 4 }, svg, "Selected fleet");
+    const cur = pts.reduce((a, p) => Math.abs(p.k - state.offPeak) < Math.abs(a.k - state.offPeak) ? p : a, pts[0]);
+    if (!isNaN(cur.fleet)) el("circle", { cx: x(cur.k), cy: y(cur.fleet), r: 4.5, fill: gpuC, stroke: css("--surface-1"), "stroke-width": 2 }, svg);
+    el("circle", { cx: x(cur.k), cy: y(cur.maas), r: 4.5, fill: maasC, stroke: css("--surface-1"), "stroke-width": 2 }, svg);
+    legend("sensLegend", [[gpuC, "Selected fleet (incl. overflow)"], [maasC, "Baseline (MaaS, + overflow beyond its limit)"]]);
+  }
+
+  function tile(k, v, d, hero) {
+    const t = document.createElement("div"); t.className = "tile" + (hero ? " hero" : "");
+    const a = document.createElement("div"); a.className = "k"; a.textContent = k;
+    const b = document.createElement("div"); b.className = "v"; b.textContent = v;
+    const c = document.createElement("div"); c.className = "d"; c.textContent = d;
+    t.append(a, b, c); return t;
+  }
+  function drawTiles(r) {
+    const box = $("tiles"); box.textContent = "";
+    if (r.infeasible) return;
+    box.append(
+      tile("Monthly cost", fmtK(r.total), DATA.pricingLabels[state.pricing], true),
+      tile("Chips (always on)", String(r.gpus), DATA.replica + " per replica · " + DATA.meta.gpu),
+      r.maasOnlyFeasible
+        ? tile("vs MaaS-only", pct(r.vsBaseline), "MaaS-only " + fmtK(r.baseline.total))
+        : tile("vs baseline", pct(r.vsBaseline), "MaaS + " + GEM_NAMES[r.baseline.overflow_target] + " overflow " + fmtK(r.baseline.total)),
+      tile("$ per 1M input tokens", "$" + r.perM.toFixed(3), "matching output included"),
+      tile("Avg utilization", pct(r.fleet.util), r.routing ? "short prompts (≤32K) on fleet" : "all prompts on fleet"),
+      tile(">32K GPU time share", pct(r.throughput.longGpuShare), r.routing ? "diverted to " + state.routeLongTarget : "currently on fleet"),
+    );
+  }
+
+  function fillTable(t, head, rows) {
+    t.textContent = "";
+    const tr0 = document.createElement("tr");
+    for (const h of head) { const th = document.createElement("th"); th.textContent = h; tr0.appendChild(th); }
+    t.appendChild(tr0);
+    rows.forEach((row) => {
+      const tr = document.createElement("tr");
+      for (const c of row) { const td = document.createElement("td"); td.textContent = c; tr.appendChild(td); }
+      t.appendChild(tr);
+    });
+  }
+
+  function drawIncidentsAndRouting(r) {
+    if (r.infeasible) return;
+    const inc = M.incidents(DATA, params(), r);
+    fillTable($("incidentTable"), ["Incident Scenario", LITE, FLASH, G4, "Open MaaS Ref"],
+      inc.rows.map((x) => [x.name, fmtK(x.lite), fmtK(x.flash), fmtK(x.g4), fmtK(x.open)]));
+    $("incidentNote").textContent =
+      `Always-on zone redundancy (1.5×) adds ${inc.zoneGpus} chips ≈ ${fmtK(inc.zoneMonthly)}/month; two-region (2.0×) adds ${inc.regGpus} chips ≈ ${fmtK(inc.regMonthly)}/month. ` +
+      `Layer-3 failover to ${LITE} on Agent Platform is $0 when idle, ` +
+      (inc.zoneMonthly <= 0 ? "and zone redundancy adds no chips at this fleet size."
+        : inc.breakeven_never ? "so failover is cheaper at any realistic outage rate."
+        : `so idle hardware only pays off above ~${Math.round(inc.breakeven_outage_hours).toLocaleString()} peak outage hours/month.`);
+
+    const allOn = M.scenario(DATA, params({ routeLong: false }));
+    const onGemLite = M.scenario(DATA, params({ routeLong: true, routeLongTarget: "gemini_flash_lite" }));
+    const onGemFlash = M.scenario(DATA, params({ routeLong: true, routeLongTarget: "gemini_flash" }));
+    const onOpen = M.scenario(DATA, params({ routeLong: true, routeLongTarget: "open_maas" }));
+    const rRows = [
+      ["All prompts on self-hosted fleet", allOn],
+      [">32K diverted to " + LITE, onGemLite],
+      [">32K diverted to " + FLASH, onGemFlash],
+      [">32K diverted to Open-Model MaaS", onOpen],
+    ].map(([label, s]) => s.infeasible ? [label, "—", "—", "infeasible"] : [label, String(s.gpus), fmtK(s.gpuCost), fmtK(s.total)]);
+    fillTable($("routingTable"), ["Strategy", "Chips", "Hardware/mo", "Total/mo"], rRows);
+    const savedGpus = (allOn.gpus || 0) - (onGemLite.gpus || 0);
+    const savedUsd = (allOn.total || 0) - (onGemLite.total || 0);
+    $("routingNote").textContent = state.pctOver32 > 0
+      ? `Prompts >32K are ${state.pctOver32.toFixed(1)}% of requests (${pct(r.buckets.longTokenShare)} of tokens) and take ${pct(r.throughput.longGpuShare)} of fleet compute time. ` +
+        (savedUsd > 0 ? `Diverting >32K to ${LITE} saves ${savedGpus} chips and ${fmtK(savedUsd)}/month.` : "Toggle 'Divert >32K prompts' in the sidebar to compare.")
+      : "Raise '% of requests > 32K' in the sidebar to see how long-context routing to Gemini on Agent Platform reduces GPU/TPU fleet size.";
+  }
+
+  function drawTable(r) {
+    const t = $("detailTable"); t.textContent = "";
+    const rows = [
+      ["Model · Accelerator", DATA.meta.model + " · " + DATA.replica + "× " + DATA.meta.gpu],
+      [TP_WORD + " per-chip throughput (reference)", fmtTok(DATA.perGpu) + " input tok/s"
+        + ((DATA.mixFactorRef ?? 1) === 1 ? " (short prompts)" : " (at mix factor " + (+DATA.mixFactorRef).toFixed(2) + "×)")],
+      ["Per-chip throughput (all prompts, this mix " + r.buckets.mixFactor.toFixed(2) + "×)", fmtTok(r.throughput.all) + " input tok/s"],
+      ["Per-chip throughput (≤32K short prompts)", fmtTok(r.throughput.small) + " input tok/s"],
+      ["Token share: Short (≤32K) / Medium (32–128K) / Long (>128K)", ["small", "medium", "large"].map((k) => pct(r.buckets[k].tokenShare)).join(" / ")],
+      ["Cached input share", pct(r.overallCache)],
+      ["Price per chip-hour", "$" + r.price.toFixed(2)],
+      ["Self-hosted chips", r.fleet ? String(r.gpus) : "—"],
+      ["Hardware cost / month", r.fleet ? fmtK(r.gpuCost) : "—"],
+      ["Output tokens / request (incl. thinking)", Math.round(r.effectiveOutput).toLocaleString()],
+      ["Peak overflow / month", r.fleet ? fmtK(r.fleet.maasCost) : "—"],
+      ["Beyond MaaS limit / month", fmtK(r.geminiOverflowCost || 0)],
+      [">32K diverted cost / month", fmtK(r.longMaasCost || 0)],
+      ["Total / month", r.total ? fmtK(r.total) : "—"],
+      ["Peak requests/s vs MaaS limit", r.maasPeakRps.toFixed(1) + " vs " + r.maasCapRps + (r.maasOnlyFeasible ? " (fits)" : " (exceeds)")],
+      ["Baseline / month", r.baseline.label + ": " + fmtK(r.baseline.total)],
+      ["MaaS-only (ignoring the limit) / month", fmtK(r.maasOnly)],
+    ];
+    fillTable(t, ["Metric", "Value"], rows);
+  }
+
+  function baseWord(s) { return s.maasOnlyFeasible ? "MaaS-only" : "the baseline"; }
+  function drawVerdict(r) {
+    const v = $("verdict"); v.textContent = "";
+    if (r.infeasible || !r.total) return;
+    const b = r.baseline, label = DATA.pricingLabels[state.pricing];
+    const chips = `${r.gpus} × ${DATA.meta.gpu}`;
+    const head = r.vsBaseline <= 1
+      ? `Self-host on ${chips} (${label}): ${fmtK(r.total)} a month, ${pct(r.vsBaseline)} of what ${r.maasOnlyFeasible ? "MaaS" : "MaaS plus overflow"} would cost.`
+      : `Stay on ${r.maasOnlyFeasible ? "MaaS" : "MaaS plus overflow"}: self-hosting on ${chips} costs ${fmtK(r.total)} a month, ${pct(r.vsBaseline)} of ${fmtK(b.total)}.`;
+    v.appendChild(document.createTextNode(head));
+    const sub = document.createElement("span"); sub.className = "sub";
+    sub.textContent = r.maasOnlyFeasible
+      ? `Peak ${r.maasPeakRps.toFixed(1)} req/s fits the MaaS limit of ${r.maasCapRps} req/s; MaaS only would cost ${fmtK(b.total)} a month.`
+      : `MaaS can't serve your peak: limit ${r.maasCapRps} req/s vs ${r.maasPeakRps.toFixed(1)} req/s at peak; ` +
+        `MaaS up to its limit plus ${GEM_NAMES[b.overflow_target]} overflow would cost ${fmtK(b.total)} a month.`;
+    v.appendChild(sub);
+    // Default fleet policy (no Gemini at peaks): what allowing the failover tier at peaks would save (report.md too).
+    const h = r.peakGeminiHint;
+    if (h) {
+      const hint = document.createElement("span"); hint.className = "sub hint";
+      hint.appendChild(document.createTextNode(M.hintText(h.name, h.gpus, h.saving, DATA.meta.kind === "tpu" ? "TPU chips" : "GPUs") + " "));
+      const btn = document.createElement("button"); btn.type = "button"; btn.textContent = "Allow Gemini at peaks";
+      btn.addEventListener("click", () => {
+        state.peakOverflowTarget = h.target;
+        const sel = document.getElementById("c_peakOverflowTarget"); if (sel) sel.value = h.target;
+        update();
+      });
+      hint.appendChild(btn);
+      v.appendChild(hint);
+    }
+  }
+
+  function update() {
+    markChanged();
+    const r = M.scenario(DATA, params());
+    drawVerdict(r);
+    const w = $("warn");
+    if (r.infeasible) { w.style.display = "block"; w.textContent = "⚠ " + r.infeasible; }
+    else w.style.display = "none";
+    drawTiles(r);
+    drawLoad(r);
+    drawCost(r);
+    drawSens();
+    drawIncidentsAndRouting(r);
+    drawTable(r);
+  }
+
+  $("reset").addEventListener("click", () => { resetState(); buildControls(); update(); });
+  $("theme").addEventListener("click", () => {
+    const root = document.documentElement;
+    const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    root.dataset.theme = dark ? "light" : "dark";
+    update();
+  });
+  window.addEventListener("resize", hideTip);
+  $("subtitle").textContent = `${DATA.meta.model} on ${DATA.meta.gpu} (${DATA.meta.region}). ` +
+    (TP.label ? TP.label + " " : "") + "Move the sliders to test assumptions, divert >32K prompts to Google Gemini on Agent Platform, or compare Layer-3 Gemini failover vs idle redundant hardware.";
+  if (TP.source !== "measured" && TP.label) $("tpFoot").textContent = TP.label;
+  resetState(); buildControls(); update();
+})();
+</script>
+</body>
+</html>

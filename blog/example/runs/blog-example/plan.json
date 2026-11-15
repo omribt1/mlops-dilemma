@@ -1,0 +1,486 @@
+{
+  "weights_gb": 25.8,
+  "chosen": {
+    "accelerator_type": "NVIDIA_RTX_PRO_6000",
+    "accelerator_count": 1,
+    "machine_type": "g4-standard-48",
+    "gpu": "RTX PRO 6000",
+    "kind": "gpu",
+    "vram_gb": 96,
+    "usable_gb": 84.4,
+    "weights_gb": 25.8,
+    "vram_util": 0.306,
+    "verified": false,
+    "est_input_tps_per_gpu": 11395.0,
+    "est_replica_input_tps": 11395.0,
+    "est_basis": "reference",
+    "est_basis_label": "Reference benchmark",
+    "est_basis_note": "Measured on 1x RTX PRO 6000 with the reference workload (Gemma 4 26B-A4B FP8, ~5K-token prompts, 500-token answers, no thinking) on 2026-11-09. Adjusted to your output length and prompt size: x0.67. Your workload may differ: run a benchmark with your prompts.",
+    "spec_input_tps_per_gpu": 8635.0,
+    "prices": {
+      "vertex": 5.85009906,
+      "on_demand": 4.49993,
+      "management_fee": 0.67501143,
+      "cud_1y": 3.1050000000000004,
+      "vertex_cud_1y": 3.7125102870000006,
+      "cud_3y": 1.97945,
+      "vertex_cud_3y": 2.519459144,
+      "missing_skus": [],
+      "source": "live_billing"
+    },
+    "price_source": "live_billing",
+    "est_cost_index": 0.012379227475178571
+  },
+  "candidates": [
+    {
+      "accelerator_type": "NVIDIA_RTX_PRO_6000",
+      "accelerator_count": 1,
+      "machine_type": "g4-standard-48",
+      "gpu": "RTX PRO 6000",
+      "kind": "gpu",
+      "vram_gb": 96,
+      "usable_gb": 84.4,
+      "weights_gb": 25.8,
+      "vram_util": 0.306,
+      "verified": false,
+      "est_input_tps_per_gpu": 11395.0,
+      "est_replica_input_tps": 11395.0,
+      "est_basis": "reference",
+      "est_basis_label": "Reference benchmark",
+      "est_basis_note": "Measured on 1x RTX PRO 6000 with the reference workload (Gemma 4 26B-A4B FP8, ~5K-token prompts, 500-token answers, no thinking) on 2026-11-09. Adjusted to your output length and prompt size: x0.67. Your workload may differ: run a benchmark with your prompts.",
+      "spec_input_tps_per_gpu": 8635.0,
+      "prices": {
+        "vertex": 5.85009906,
+        "on_demand": 4.49993,
+        "management_fee": 0.67501143,
+        "cud_1y": 3.1050000000000004,
+        "vertex_cud_1y": 3.7125102870000006,
+        "cud_3y": 1.97945,
+        "vertex_cud_3y": 2.519459144,
+        "missing_skus": [],
+        "source": "live_billing"
+      },
+      "price_source": "live_billing",
+      "est_cost_index": 0.012379227475178571
+    },
+    {
+      "accelerator_type": "NVIDIA_TESLA_A100",
+      "accelerator_count": 2,
+      "machine_type": "a2-highgpu-2g",
+      "gpu": "A100 40GB",
+      "kind": "gpu",
+      "vram_gb": 80,
+      "usable_gb": 68.0,
+      "weights_gb": 25.8,
+      "vram_util": 0.38,
+      "verified": false,
+      "est_input_tps_per_gpu": 6181.0,
+      "est_replica_input_tps": 12362.0,
+      "est_basis": "spec",
+      "est_basis_label": "Rough spec estimate",
+      "est_basis_note": "No reference benchmark for A100 40GB yet: estimated from its specs (compute and memory bandwidth). Real throughput can differ by several times. Your workload may differ: run a benchmark with your prompts.",
+      "spec_input_tps_per_gpu": 6181.0,
+      "prices": {
+        "vertex": 4.9246321,
+        "on_demand": 3.6733849999999997,
+        "management_fee": 0.7001371999999999,
+        "cud_1y": 2.31420704,
+        "vertex_cud_1y": 2.94433052,
+        "cud_3y": 1.285708326,
+        "vertex_cud_3y": 1.845818086,
+        "missing_skus": [],
+        "source": "live_billing"
+      },
+      "price_source": "live_billing",
+      "est_cost_index": 0.014974705877062804
+    },
+    {
+      "accelerator_type": "NVIDIA_L4",
+      "accelerator_count": 2,
+      "machine_type": "g2-standard-24",
+      "gpu": "L4",
+      "kind": "gpu",
+      "vram_gb": 48,
+      "usable_gb": 39.2,
+      "weights_gb": 25.8,
+      "vram_util": 0.658,
+      "verified": false,
+      "est_input_tps_per_gpu": 1478.0,
+      "est_replica_input_tps": 2956.0,
+      "est_basis": "spec",
+      "est_basis_label": "Rough spec estimate",
+      "est_basis_note": "No reference benchmark for L4 yet: estimated from its specs (compute and memory bandwidth). Real throughput can differ by several times. Your workload may differ: run a benchmark with your prompts.",
+      "spec_input_tps_per_gpu": 1478.0,
+      "prices": {
+        "vertex": 1.3007817,
+        "on_demand": 1.000416287,
+        "management_fee": 0.1500917,
+        "cud_1y": 0.630262254,
+        "vertex_cud_1y": 0.7653447840000001,
+        "cud_3y": 0.450187295,
+        "vertex_cud_3y": 0.570260655,
+        "missing_skus": [],
+        "source": "live_billing"
+      },
+      "price_source": "live_billing",
+      "est_cost_index": 0.015607787768595041
+    },
+    {
+      "accelerator_type": "NVIDIA_H100_80GB",
+      "accelerator_count": 1,
+      "machine_type": "a3-highgpu-1g",
+      "gpu": "H100 80GB",
+      "kind": "gpu",
+      "vram_gb": 80,
+      "usable_gb": 70.0,
+      "weights_gb": 25.8,
+      "vram_util": 0.369,
+      "verified": false,
+      "est_input_tps_per_gpu": 14704.0,
+      "est_replica_input_tps": 14704.0,
+      "est_basis": "reference",
+      "est_basis_label": "Reference benchmark",
+      "est_basis_note": "Measured on 1x H100 80GB with the reference workload (Gemma 4 26B-A4B FP8, ~5K-token prompts, 500-token answers, no thinking) on 2026-11-09. Adjusted to your output length and prompt size: x0.66. Your workload may differ: run a benchmark with your prompts.",
+      "spec_input_tps_per_gpu": 16493.0,
+      "prices": {
+        "vertex": 14.272789200000002,
+        "on_demand": 10.979058207000001,
+        "management_fee": 1.6468702,
+        "cud_1y": 7.621178196000001,
+        "vertex_cud_1y": 9.103361376,
+        "cud_3y": 4.821061338,
+        "vertex_cud_3y": 6.138557498,
+        "missing_skus": [],
+        "source": "live_billing"
+      },
+      "price_source": "live_billing",
+      "est_cost_index": 0.015736836227638353
+    },
+    {
+      "accelerator_type": "NVIDIA_A100_80GB",
+      "accelerator_count": 1,
+      "machine_type": "a2-ultragpu-1g",
+      "gpu": "A100 80GB",
+      "kind": "gpu",
+      "vram_gb": 80,
+      "usable_gb": 70.0,
+      "weights_gb": 25.8,
+      "vram_util": 0.369,
+      "verified": false,
+      "est_input_tps_per_gpu": 7855.0,
+      "est_replica_input_tps": 7855.0,
+      "est_basis": "reference",
+      "est_basis_label": "Reference benchmark",
+      "est_basis_note": "Measured on 1x A100 80GB with the reference workload (Gemma 4 26B-A4B FP8, ~5K-token prompts, 500-token answers, no thinking) on 2026-11-09. Adjusted to your output length and prompt size: x0.76. Your workload may differ: run a benchmark with your prompts.",
+      "spec_input_tps_per_gpu": 7446.0,
+      "prices": {
+        "vertex": 6.5360106,
+        "on_demand": 5.027702,
+        "management_fee": 0.7541632,
+        "cud_1y": 4.1738,
+        "vertex_cud_1y": 4.85254688,
+        "cud_3y": 3.481504396,
+        "vertex_cud_3y": 4.084834956,
+        "missing_skus": [],
+        "source": "live_billing"
+      },
+      "price_source": "live_billing",
+      "est_cost_index": 0.01688537213613385
+    },
+    {
+      "accelerator_type": "NVIDIA_B200",
+      "accelerator_count": 8,
+      "machine_type": "a4-highgpu-8g",
+      "gpu": "B200 180GB",
+      "kind": "gpu",
+      "vram_gb": 1440,
+      "usable_gb": 1280.0,
+      "weights_gb": 25.8,
+      "vram_util": 0.02,
+      "verified": false,
+      "est_input_tps_per_gpu": 32867.0,
+      "est_replica_input_tps": 262936.0,
+      "est_basis": "spec",
+      "est_basis_label": "Rough spec estimate",
+      "est_basis_note": "No reference benchmark for B200 180GB yet: estimated from its specs (compute and memory bandwidth). Real throughput can differ by several times. Your workload may differ: run a benchmark with your prompts.",
+      "spec_input_tps_per_gpu": 32867.0,
+      "prices": {
+        "vertex": 20.942999999999998,
+        "on_demand": 16.11,
+        "management_fee": 2.4165,
+        "cud_1y": 11.1159,
+        "vertex_cud_1y": 13.29075,
+        "cud_3y": 7.0884,
+        "vertex_cud_3y": 9.0216,
+        "missing_skus": [],
+        "source": "live_billing"
+      },
+      "price_source": "live_billing",
+      "est_cost_index": 0.011635
+    },
+    {
+      "accelerator_type": "NVIDIA_H200_141GB",
+      "accelerator_count": 8,
+      "machine_type": "a3-ultragpu-8g",
+      "gpu": "H200 141GB",
+      "kind": "gpu",
+      "vram_gb": 1128,
+      "usable_gb": 999.2,
+      "weights_gb": 25.8,
+      "vram_util": 0.026,
+      "verified": false,
+      "est_input_tps_per_gpu": 17284.0,
+      "est_replica_input_tps": 138272.0,
+      "est_basis": "spec",
+      "est_basis_label": "Rough spec estimate",
+      "est_basis_note": "No reference benchmark for H200 141GB yet: estimated from its specs (compute and memory bandwidth). Real throughput can differ by several times. Your workload may differ: run a benchmark with your prompts.",
+      "spec_input_tps_per_gpu": 17284.0,
+      "prices": {
+        "vertex": 12.105262,
+        "on_demand": 9.31174,
+        "management_fee": 1.396761,
+        "cud_1y": 6.43139,
+        "vertex_cud_1y": 7.6884749,
+        "cud_3y": 4.08301,
+        "vertex_cud_3y": 5.2004188,
+        "missing_skus": [],
+        "source": "live_billing"
+      },
+      "price_source": "live_billing",
+      "est_cost_index": 0.013133893672554969
+    },
+    {
+      "accelerator_type": "TPU_V6E",
+      "accelerator_count": 4,
+      "machine_type": "ct6e-standard-4t",
+      "gpu": "Cloud TPU v6e (Trillium)",
+      "kind": "tpu",
+      "vram_gb": 128,
+      "usable_gb": 107.2,
+      "weights_gb": 25.8,
+      "vram_util": 0.241,
+      "verified": false,
+      "est_input_tps_per_gpu": 8665.0,
+      "est_replica_input_tps": 34660.0,
+      "est_basis": "spec",
+      "est_basis_label": "Rough spec estimate",
+      "est_basis_note": "No reference benchmark for Cloud TPU v6e (Trillium) yet: estimated from its specs (compute and memory bandwidth). Real throughput can differ by several times. Your workload may differ: run a benchmark with your prompts.",
+      "spec_input_tps_per_gpu": 8665.0,
+      "prices": {
+        "vertex": 3.35,
+        "vertex_cud_1y": 2.28,
+        "vertex_cud_3y": 1.54,
+        "on_demand": 2.7,
+        "cud_1y": 1.7,
+        "cud_3y": 1.21,
+        "management_fee": 0.65,
+        "missing_skus": [],
+        "source": "reference_catalog"
+      },
+      "price_source": "reference_catalog",
+      "est_cost_index": 0.006680131929314936
+    },
+    {
+      "accelerator_type": "TPU_V5E",
+      "accelerator_count": 4,
+      "machine_type": "ct5lp-hightpu-4t",
+      "gpu": "Cloud TPU v5e",
+      "kind": "tpu",
+      "vram_gb": 64,
+      "usable_gb": 49.6,
+      "weights_gb": 25.8,
+      "vram_util": 0.52,
+      "verified": false,
+      "est_input_tps_per_gpu": 3344.0,
+      "est_replica_input_tps": 13376.0,
+      "est_basis": "spec",
+      "est_basis_label": "Rough spec estimate",
+      "est_basis_note": "No reference benchmark for Cloud TPU v5e yet: estimated from its specs (compute and memory bandwidth). Real throughput can differ by several times. Your workload may differ: run a benchmark with your prompts.",
+      "spec_input_tps_per_gpu": 3344.0,
+      "prices": {
+        "vertex": 1.5,
+        "vertex_cud_1y": 1.02,
+        "vertex_cud_3y": 0.69,
+        "on_demand": 1.2,
+        "cud_1y": 0.76,
+        "cud_3y": 0.54,
+        "management_fee": 0.3,
+        "missing_skus": [],
+        "source": "reference_catalog"
+      },
+      "price_source": "reference_catalog",
+      "est_cost_index": 0.008300122513320482
+    },
+    {
+      "accelerator_type": "TPU_V5P",
+      "accelerator_count": 4,
+      "machine_type": "ct5p-hightpu-4t",
+      "gpu": "Cloud TPU v5p",
+      "kind": "tpu",
+      "vram_gb": 380,
+      "usable_gb": 334.0,
+      "weights_gb": 25.8,
+      "vram_util": 0.077,
+      "verified": false,
+      "est_input_tps_per_gpu": 9486.0,
+      "est_replica_input_tps": 37944.0,
+      "est_basis": "spec",
+      "est_basis_label": "Rough spec estimate",
+      "est_basis_note": "No reference benchmark for Cloud TPU v5p yet: estimated from its specs (compute and memory bandwidth). Real throughput can differ by several times. Your workload may differ: run a benchmark with your prompts.",
+      "spec_input_tps_per_gpu": 9486.0,
+      "prices": {
+        "vertex": 5.25,
+        "vertex_cud_1y": 3.58,
+        "vertex_cud_3y": 2.42,
+        "on_demand": 4.2,
+        "cud_1y": 2.65,
+        "cud_3y": 1.89,
+        "management_fee": 1.05,
+        "missing_skus": [],
+        "source": "reference_catalog"
+      },
+      "price_source": "reference_catalog",
+      "est_cost_index": 0.010573802891995993
+    }
+  ],
+  "deployment_model": {
+    "model_garden_id": "google/gemma4@gemma-4-26b-a4b-it",
+    "hf_id": "google/gemma-4-26b-a4b-it",
+    "precision": "fp8",
+    "quantization": "on_the_fly"
+  },
+  "availability": {
+    "source": "compute_api",
+    "region": "us-central1",
+    "fetched_at": 1794264581,
+    "not_offered": [],
+    "unrated": [
+      {
+        "accelerator_type": "NVIDIA_GB200",
+        "name": "NVIDIA GB200 192GB",
+        "kind": "gpu",
+        "zones": [
+          "us-central1-a",
+          "us-central1-b"
+        ],
+        "machines": "a4x-highgpu-4g",
+        "note": "Offered in us-central1 (a4x-highgpu-4g) but there is no performance data for it in this tool (catalog.CHIP_SPECS): not estimated."
+      },
+      {
+        "accelerator_type": "NVIDIA_GB300",
+        "name": "nvidia-gb300",
+        "kind": "gpu",
+        "zones": [
+          "us-central1-b"
+        ],
+        "machines": "a4x-maxgpu-4g-metal",
+        "note": "Offered in us-central1 (a4x-maxgpu-4g-metal) but there is no performance data for it in this tool (catalog.CHIP_SPECS): not estimated."
+      },
+      {
+        "accelerator_type": "NVIDIA_H100_MEGA_80GB",
+        "name": "NVIDIA H100 80GB MEGA",
+        "kind": "gpu",
+        "zones": [
+          "us-central1-a",
+          "us-central1-b",
+          "us-central1-c"
+        ],
+        "machines": "a3-megagpu-8g",
+        "note": "Offered in us-central1 (a3-megagpu-8g) but there is no performance data for it in this tool (catalog.CHIP_SPECS): not estimated."
+      },
+      {
+        "accelerator_type": "NVIDIA_TESLA_P4",
+        "name": "NVIDIA Tesla P4",
+        "kind": "gpu",
+        "zones": [
+          "us-central1-a",
+          "us-central1-c"
+        ],
+        "machines": "attachable to general-purpose machines",
+        "note": "Offered in us-central1 (attachable to general-purpose machines) but there is no performance data for it in this tool (catalog.CHIP_SPECS): not estimated."
+      },
+      {
+        "accelerator_type": "NVIDIA_TESLA_T4",
+        "name": "NVIDIA T4",
+        "kind": "gpu",
+        "zones": [
+          "us-central1-a",
+          "us-central1-b",
+          "us-central1-c",
+          "us-central1-f"
+        ],
+        "machines": "attachable to general-purpose machines",
+        "note": "Offered in us-central1 (attachable to general-purpose machines) but there is no performance data for it in this tool (catalog.CHIP_SPECS): not estimated."
+      },
+      {
+        "accelerator_type": "NVIDIA_TESLA_V100",
+        "name": "NVIDIA V100",
+        "kind": "gpu",
+        "zones": [
+          "us-central1-a",
+          "us-central1-b",
+          "us-central1-c",
+          "us-central1-f"
+        ],
+        "machines": "attachable to general-purpose machines",
+        "note": "Offered in us-central1 (attachable to general-purpose machines) but there is no performance data for it in this tool (catalog.CHIP_SPECS): not estimated."
+      },
+      {
+        "accelerator_type": "TPU_3",
+        "name": "ct3",
+        "kind": "tpu",
+        "zones": [
+          "us-central1-a",
+          "us-central1-b",
+          "us-central1-f"
+        ],
+        "machines": "ct3-hightpu-4t",
+        "note": "Offered in us-central1 (ct3-hightpu-4t) but there is no performance data for it in this tool (catalog.CHIP_SPECS): not estimated."
+      },
+      {
+        "accelerator_type": "TPU_3P",
+        "name": "ct3p",
+        "kind": "tpu",
+        "zones": [
+          "us-central1-a",
+          "us-central1-b",
+          "us-central1-f"
+        ],
+        "machines": "ct3p-hightpu-4t",
+        "note": "Offered in us-central1 (ct3p-hightpu-4t) but there is no performance data for it in this tool (catalog.CHIP_SPECS): not estimated."
+      },
+      {
+        "accelerator_type": "TPU_5L",
+        "name": "ct5l",
+        "kind": "tpu",
+        "zones": [
+          "us-central1-a"
+        ],
+        "machines": "ct5l-hightpu-1t, ct5l-hightpu-4t, ct5l-hightpu-8t",
+        "note": "Offered in us-central1 (ct5l-hightpu-1t, ct5l-hightpu-4t, ct5l-hightpu-8t) but there is no performance data for it in this tool (catalog.CHIP_SPECS): not estimated."
+      },
+      {
+        "accelerator_type": "TPU_7",
+        "name": "tpu7",
+        "kind": "tpu",
+        "zones": [
+          "us-central1-c"
+        ],
+        "machines": "tpu7-standard-1t, tpu7-standard-4t",
+        "note": "Offered in us-central1 (tpu7-standard-1t, tpu7-standard-4t) but there is no performance data for it in this tool (catalog.CHIP_SPECS): not estimated."
+      },
+      {
+        "accelerator_type": "TPU_7X",
+        "name": "tpu7x",
+        "kind": "tpu",
+        "zones": [
+          "us-central1-b",
+          "us-central1-c"
+        ],
+        "machines": "tpu7x-standard-1t, tpu7x-standard-4t",
+        "note": "Offered in us-central1 (tpu7x-standard-1t, tpu7x-standard-4t) but there is no performance data for it in this tool (catalog.CHIP_SPECS): not estimated."
+      }
+    ],
+    "note": "Accelerators and machine shapes offered in us-central1, from the Compute Engine API."
+  }
+}
