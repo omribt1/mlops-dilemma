@@ -483,5 +483,4 @@ blog/example/   the blog post's example workload and run (also the app's built-i
 
 ## Disclaimer
 
-Estimates for planning, not a quote. Throughput not measured on your prompts can be off by several times. Prices, quotas and GPU availability vary by region and over
-time. This is not an official Google product; provided as-is under the Apache 2.0 license.
+This code is provided “as-is” as a demonstration only to illustrate a potential solution. The code does not constitute a Google product or service of any kind, and Google offers no support, warranties, or liability of any kind with its regard. Whoever chooses to use this code accepts all responsibility related to it, including for its implementation, use, and ongoing maintenance. For the avoidance of doubt, this code is not eligible for the Google Open Source Software Vulnerability Rewards Program.
