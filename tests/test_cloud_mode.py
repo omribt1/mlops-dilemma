@@ -11,7 +11,7 @@ from google.auth import crypt, jwt
 
 from aiops_dilemma import iap, paths, prompts, server, traffic
 
-AUD = "/projects/123456789/locations/us-central1/services/aiops-dilemma"
+AUD = "/projects/123456789/locations/us-central1/services/mlops-dilemma"
 
 
 def _key():
@@ -37,7 +37,7 @@ def token(priv=GOOD_PRIV, kid="k1", **over):
 
 @pytest.fixture
 def cloud(tmp_path, monkeypatch):
-    monkeypatch.setenv("K_SERVICE", "aiops-dilemma")
+    monkeypatch.setenv("K_SERVICE", "mlops-dilemma")
     monkeypatch.setenv("DILEMMA_IAP_AUDIENCE", AUD)
     monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "my-gcp-project")
     monkeypatch.setenv("DILEMMA_RUNS_DIR", str(tmp_path / "runs"))
@@ -112,13 +112,13 @@ def test_local_mode_needs_no_header_and_logs_nothing(tmp_path, monkeypatch, caps
 
 
 def test_audience_exact_and_fail_closed(monkeypatch):
-    monkeypatch.setenv("K_SERVICE", "aiops-dilemma")
+    monkeypatch.setenv("K_SERVICE", "mlops-dilemma")
     monkeypatch.setattr(iap, "_AUD", {"value": None, "failed_at": 0.0})
     answers = {"project/numeric-project-id": "987", "instance/region": "projects/987/regions/europe-west4"}
     monkeypatch.setattr(iap, "_get", lambda url, headers=None, timeout=5.0: answers[url.split("v1/")[1]])
-    assert iap.expected_audience() == "/projects/987/locations/europe-west4/services/aiops-dilemma"
-    assert iap._aud_ok("/projects/987/locations/europe-west4/services/aiops-dilemma")
-    assert not iap._aud_ok("/projects/111/locations/europe-west4/services/aiops-dilemma")   # same name, other project
+    assert iap.expected_audience() == "/projects/987/locations/europe-west4/services/mlops-dilemma"
+    assert iap._aud_ok("/projects/987/locations/europe-west4/services/mlops-dilemma")
+    assert not iap._aud_ok("/projects/111/locations/europe-west4/services/mlops-dilemma")   # same name, other project
     # metadata unreachable: nothing passes (no pattern fallback), and the read is retried later
     monkeypatch.setattr(iap, "_AUD", {"value": None, "failed_at": 0.0})
     calls = []
@@ -126,12 +126,12 @@ def test_audience_exact_and_fail_closed(monkeypatch):
         calls.append(1)
         raise OSError("no metadata")
     monkeypatch.setattr(iap, "_get", down)
-    assert not iap._aud_ok("/projects/111/locations/us-east1/services/aiops-dilemma")
-    assert not iap._aud_ok("/projects/987/locations/europe-west4/services/aiops-dilemma")
+    assert not iap._aud_ok("/projects/111/locations/us-east1/services/mlops-dilemma")
+    assert not iap._aud_ok("/projects/987/locations/europe-west4/services/mlops-dilemma")
     n = len(calls)
     monkeypatch.setattr(iap, "_AUD", {"value": None, "failed_at": iap._AUD["failed_at"] - iap.AUD_RETRY_S - 1})
     monkeypatch.setattr(iap, "_get", lambda url, headers=None, timeout=5.0: answers[url.split("v1/")[1]])
-    assert iap._aud_ok("/projects/987/locations/europe-west4/services/aiops-dilemma")   # recovered after the retry
+    assert iap._aud_ok("/projects/987/locations/europe-west4/services/mlops-dilemma")   # recovered after the retry
     assert n >= 1
 
 
@@ -164,7 +164,7 @@ def test_paths_confined_on_a_shared_deployment(tmp_path, monkeypatch):
 
 def test_cloud_mode_switches(monkeypatch):
     assert not paths.cloud_mode() and not iap.required() and not paths.confine_paths()
-    monkeypatch.setenv("K_SERVICE", "aiops-dilemma")
+    monkeypatch.setenv("K_SERVICE", "mlops-dilemma")
     assert paths.cloud_mode() and iap.required() and paths.confine_paths()
     monkeypatch.setenv("DILEMMA_CLOUD", "0")
     assert not paths.cloud_mode() and not iap.required()

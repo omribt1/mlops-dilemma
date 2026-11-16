@@ -11,12 +11,12 @@
 # Flags / env (flags win):
 #   --project   PROJECT     Google Cloud project ID (default: gcloud config project)
 #   --region    REGION      Cloud Run + Artifact Registry + bucket region (default: us-central1)
-#   --service   SERVICE     Cloud Run service name (default: aiops-dilemma)
-#   --bucket    BUCKET      sessions bucket (default: <project>-aiops-dilemma-sessions)
+#   --service   SERVICE     Cloud Run service name (default: mlops-dilemma)
+#   --bucket    BUCKET      sessions bucket (default: <project>-mlops-dilemma-sessions)
 #   --user-email USER_EMAIL who gets IAP access (default: gcloud config account)
 #   --member    MEMBER      more IAP access, repeatable: user:a@example.com, group:ai-ops@example.com or
 #                           domain:example.com (everyone in it acts as the app's service account: trusted users only)
-#   --repo      REPO        Artifact Registry repository (default: aiops-dilemma)
+#   --repo      REPO        Artifact Registry repository (default: mlops-dilemma)
 #   --tag       TAG         image tag (default: UTC timestamp)
 #   --grant-act-as          also grant the runtime SA roles/iam.serviceAccountUser on itself (see below)
 #   --hf-token-secret SECRET  optional Secret Manager secret holding a read-only Hugging Face token, exposed to the
@@ -27,10 +27,10 @@ set -euo pipefail
 
 PROJECT="${PROJECT:-}"
 REGION="${REGION:-us-central1}"
-SERVICE="${SERVICE:-aiops-dilemma}"
+SERVICE="${SERVICE:-mlops-dilemma}"
 BUCKET="${BUCKET:-}"
 USER_EMAIL="${USER_EMAIL:-}"
-REPO="${REPO:-aiops-dilemma}"
+REPO="${REPO:-mlops-dilemma}"
 TAG="${TAG:-$(date -u +%Y%m%d-%H%M%S)}"
 GRANT_ACT_AS="${GRANT_ACT_AS:-0}"
 DRY_RUN="${DRY_RUN:-0}"
@@ -66,7 +66,7 @@ PROJECT="${PROJECT:-$(gval project)}"
 USER_EMAIL="${USER_EMAIL:-$(gval account)}"
 [[ -n "$PROJECT" ]] || { echo "set --project (or PROJECT)" >&2; exit 2; }
 [[ -n "$USER_EMAIL" ]] || { echo "set --user-email (or USER_EMAIL)" >&2; exit 2; }
-BUCKET="${BUCKET:-${PROJECT}-aiops-dilemma-sessions}"
+BUCKET="${BUCKET:-${PROJECT}-mlops-dilemma-sessions}"
 
 SA_NAME="${SERVICE}-run"
 SA_EMAIL="${SA_NAME}@${PROJECT}.iam.gserviceaccount.com"
@@ -108,7 +108,7 @@ if exists gcloud artifacts repositories describe "$REPO" --location "$REGION" --
   echo "exists: $REPO"
 else
   run gcloud artifacts repositories create "$REPO" --repository-format docker --location "$REGION" \
-    --project "$PROJECT" --description "aiops-dilemma images"
+    --project "$PROJECT" --description "mlops-dilemma images"
 fi
 
 step "Build the image with Cloud Build (source upload honours .gcloudignore: no runs/, .venv or credentials)"
@@ -127,7 +127,7 @@ if exists gcloud iam service-accounts describe "$SA_EMAIL" --project "$PROJECT";
   echo "exists: $SA_EMAIL"
 else
   run gcloud iam service-accounts create "$SA_NAME" --project "$PROJECT" \
-    --display-name "aiops-dilemma Cloud Run runtime"
+    --display-name "mlops-dilemma Cloud Run runtime"
   # IAM can take a few seconds to see a new service account before bindings succeed.
   [[ "$DRY_RUN" == 1 ]] || sleep 10
 fi
@@ -182,7 +182,7 @@ run gcloud run deploy "$SERVICE" --project "$PROJECT" --region "$REGION" --image
   --add-volume "name=sessions,type=cloud-storage,bucket=${BUCKET},mount-options=uid=${APP_UID};gid=${APP_UID};implicit-dirs" \
   --add-volume-mount "volume=sessions,mount-path=/data" \
   --set-env-vars "DILEMMA_RUNS_DIR=/data/runs,DILEMMA_CACHE_DIR=/data/cache,GOOGLE_CLOUD_PROJECT=${PROJECT},DILEMMA_CLOUD=1,DILEMMA_IAP_AUDIENCE=/projects/${PROJECT_NUMBER}/locations/${REGION}/services/${SERVICE}" \
-  --labels app=aiops-dilemma ${SECRET_FLAGS[@]+"${SECRET_FLAGS[@]}"}
+  --labels app=mlops-dilemma ${SECRET_FLAGS[@]+"${SECRET_FLAGS[@]}"}
 
 step "Identity-Aware Proxy"
 run gcloud beta run services update "$SERVICE" --project "$PROJECT" --region "$REGION" --iap

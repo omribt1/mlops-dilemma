@@ -370,8 +370,8 @@ Run the web app as a private Cloud Run service your team opens in the browser. S
 
 What it creates:
 
-- **The Cloud Run service** `aiops-dilemma`: 2 vCPU, 4 GiB, always-on CPU, exactly one instance (benchmark jobs run inside it and need a single writer), 60-minute request timeout for live progress streams.
-- **A runtime service account** `aiops-dilemma-run`, with only the roles the app uses:
+- **The Cloud Run service** `mlops-dilemma`: 2 vCPU, 4 GiB, always-on CPU, exactly one instance (benchmark jobs run inside it and need a single writer), 60-minute request timeout for live progress streams.
+- **A runtime service account** `mlops-dilemma-run`, with only the roles the app uses:
   - Agent Platform User: Model Garden, endpoints, Gemini;
   - Service Usage Consumer;
   - Browser: the project picker;
@@ -380,7 +380,7 @@ What it creates:
   - Storage Object Admin on the sessions bucket only.
 
   Benchmarks deploy GPU endpoints *as this service account*, not as the person using the app. Pass `--grant-act-as` if your project needs `iam.serviceAccountUser` for Agent Platform deploys.
-- **A Cloud Storage bucket** `<project>-aiops-dilemma-sessions`, mounted at `/data` for sessions and caches.
+- **A Cloud Storage bucket** `<project>-mlops-dilemma-sessions`, mounted at `/data` for sessions and caches.
 - **An Artifact Registry repository** for the image, built with Cloud Build.
 - **IAP access** for `--user-email`.
 
@@ -394,7 +394,7 @@ service, so a teardown removes it and the next deploy re-applies these:
 To add a teammate to a running deployment:
 
 ```bash
-gcloud beta iap web add-iam-policy-binding --resource-type cloud-run --service aiops-dilemma \
+gcloud beta iap web add-iam-policy-binding --resource-type cloud-run --service mlops-dilemma \
   --region us-central1 --member user:teammate@example.com --role roles/iap.httpsResourceAccessor
 ```
 
@@ -431,7 +431,7 @@ the IAP user, the method, path, session and status; benchmark jobs also record `
 Explorer:
 
 ```
-resource.type="cloud_run_revision" resource.labels.service_name="aiops-dilemma" jsonPayload.audit.user="alice@example.com"
+resource.type="cloud_run_revision" resource.labels.service_name="mlops-dilemma" jsonPayload.audit.user="alice@example.com"
 ```
 
 `jsonPayload.audit.event="access_denied"` shows refused requests. Cloud Run's own request logs and Agent Platform's

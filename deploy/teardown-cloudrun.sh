@@ -13,9 +13,9 @@ set -euo pipefail
 
 PROJECT="${PROJECT:-}"
 REGION="${REGION:-us-central1}"
-SERVICE="${SERVICE:-aiops-dilemma}"
+SERVICE="${SERVICE:-mlops-dilemma}"
 BUCKET="${BUCKET:-}"
-REPO="${REPO:-aiops-dilemma}"
+REPO="${REPO:-mlops-dilemma}"
 ALL=0
 DRY_RUN="${DRY_RUN:-0}"
 
@@ -39,7 +39,7 @@ if [[ -z "$PROJECT" ]]; then
   PROJECT="$(gcloud config get-value project 2>/dev/null || true)"; [[ "$PROJECT" == "(unset)" ]] && PROJECT=""
 fi
 [[ -n "$PROJECT" ]] || { echo "set --project (or PROJECT)" >&2; exit 2; }
-BUCKET="${BUCKET:-${PROJECT}-aiops-dilemma-sessions}"
+BUCKET="${BUCKET:-${PROJECT}-mlops-dilemma-sessions}"
 SA_EMAIL="${SERVICE}-run@${PROJECT}.iam.gserviceaccount.com"
 
 run() { printf '+'; printf ' %q' "$@"; printf '\n'; [[ "$DRY_RUN" == 1 ]] || "$@"; }
