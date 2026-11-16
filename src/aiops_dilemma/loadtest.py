@@ -165,7 +165,7 @@ def preflight_prompt_tokens(cfg: dict, run_dir: Path | None = None) -> tuple[int
             for line in open(path):
                 if line.strip():
                     try:
-                        largest = max(largest, int(json.loads(line).get("prompt_tokens") or 0))
+                        largest = max(largest, prompt_tokens_estimate(json.loads(line)))   # prompts carry input_tokens
                     except (ValueError, TypeError):
                         pass
         n = largest or 2 * int(req.get("avg_input_tokens") or 6000)

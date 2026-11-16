@@ -399,7 +399,7 @@ SERVING_IMAGES = [
      # A CUDA build of vLLM: GPUs only (TPUs need a TPU build). Tested with long requests on these GPUs.
      "accelerator_kinds": ["gpu"],
      "tested_accelerators": ["NVIDIA_RTX_PRO_6000", "NVIDIA_H100_80GB", "NVIDIA_A100_80GB"],
-     "label": "Pinned: tested by aiops-dilemma", "tested": "2026-11-09",
+     "label": "Pinned: tested by mlops-dilemma", "tested": "2026-11-09",
      "tested_on": "Gemma 4 26B-A4B FP8, 1x RTX PRO 6000 (g4-standard-48), us-central1, inference timeout 600 s",
      "notes": ("Gemma 4 day-0 vLLM build (tag gemma4, built 2026-04-02). A forced 12,000-token stream completed in "
                "92 s and a ~110K-token prompt in 14 s. The current verified recipe image "

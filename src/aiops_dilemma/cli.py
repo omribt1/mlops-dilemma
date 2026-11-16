@@ -60,7 +60,7 @@ def cmd_ui(a):
     import uvicorn
     from aiops_dilemma.server import app
     url = f"http://{a.host}:{a.port}"
-    print(f"Starting aiops-dilemma interactive UI at {url}")
+    print(f"Starting mlops-dilemma interactive UI at {url}")
     if a.open:
         webbrowser.open(url)
     uvicorn.run(app, host=a.host, port=a.port, log_level="info")

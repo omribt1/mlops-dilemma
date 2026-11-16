@@ -1,4 +1,4 @@
-/* aiops-dilemma web UI (`dilemma ui`). Design: docs/ui-design-plan.md.
+/* mlops-dilemma web UI (`dilemma ui`). Design: docs/ui-design-plan.md.
  * Inputs live in the rail; every output is recomputed client-side with window.DilemmaModel (model.js).
  * The server is only called to load/save sessions, re-plan hardware, upload files and run benchmarks. */
 (function () {
@@ -1002,7 +1002,8 @@
       html = `With your fleet of ${n} × <span class="ent">${acc}</span>, self-hosting <span class="ent">${model}</span> would cost ${cost} a month, but it ${esc(issues.map((x) => x.short).join(" and "))}<span class="muted">, so it's outside the fleet policy</span>. The cheapest fleet within the policy is <span class="num">${S.base.gpus}</span> chips at <span class="num">${fmtUSD(S.base.total)}</span> (${pct(bb ? bb.vs : NaN)} of ${baseShort(bb)}).`;
     } else if (b && !b.feasible) {
       // MaaS alone can't serve the peak: never tell the user to stay on it.
-      const lead = `Open-model MaaS can't serve your peak <span class="muted">(limit ${fmtRps(b.capRps)} req/s, peak ${fmtRps(b.peakRps)} req/s)</span>.`;
+      const planned = b.capRps / Math.max(1, +(S.p && S.p.headroom) || 1);
+      const lead = `Open-model MaaS can't serve your peak <span class="muted">(limit ${fmtRps(b.capRps)} req/s, planned at ${planned.toFixed(1)} to absorb bursts; peak ${fmtRps(b.peakRps)} req/s)</span>.`;
       const basis = `<span class="num">${fmtUSD(b.total)}</span> for MaaS up to its limit plus ${esc(targetName(b.target))} overflow`;
       if (r.overridden && S.base && S.base.gpus) {
         html = `${lead} With your fleet, self-hosting ${host} costs ${cost} a month vs ${basis}. <span class="muted">The cheapest fleet is ${S.base.gpus} chips at ${fmtUSD(S.base.total)}.</span>`;
@@ -1010,7 +1011,7 @@
         html = `${lead} Self-host ${host}: ${cost} a month vs ${basis}.`;
       } else {
         // Self-hosting loses: recommend the baseline first, then say what self-hosting would cost.
-        html = `Stay on open-model MaaS up to its limit with ${esc(targetName(b.target))} overflow: <span class="num">${fmtUSD(b.total)}</span> a month <span class="muted">(MaaS limit ${fmtRps(b.capRps)} req/s, peak ${fmtRps(b.peakRps)} req/s)</span>. Self-hosting ${host} would cost ${cost} (${share} of that).`;
+        html = `Stay on open-model MaaS up to its limit with ${esc(targetName(b.target))} overflow: <span class="num">${fmtUSD(b.total)}</span> a month <span class="muted">(MaaS limit ${fmtRps(b.capRps)} req/s, planned at ${(b.capRps / Math.max(1, +(S.p && S.p.headroom) || 1)).toFixed(1)}; peak ${fmtRps(b.peakRps)} req/s)</span>. Self-hosting ${host} would cost ${cost} (${share} of that).`;
       }
     } else if (r.overridden && S.base && S.base.gpus) {
       html = `With your fleet of ${n} × <span class="ent">${acc}</span>, self-hosting <span class="ent">${model}</span> costs ${cost} a month, ${share} of what MaaS would cost. <span class="muted">The cheapest fleet is ${S.base.gpus} chips at ${fmtUSD(S.base.total)} (${pct(vsBase(S.base))}).</span>`;
@@ -1185,6 +1186,16 @@
     $("bucketText").textContent = (+r.pct_over_32k > 0)
       ? `Tokens: ${pct(b.small.tokenShare)} up to 32K, ${pct(b.medium.tokenShare)} 32K–128K, ${pct(b.large.tokenShare)} over 128K. Prompts over 32K take ${pct(b.longGpuShare)} of fleet time.`
       : "All prompts are 32K tokens or shorter.";
+    // The long tail must fit inside the average prompt (config._mix_check): else short prompts would average < 800.
+    const o32 = Math.min(100, +r.pct_over_32k || 0) / 100, o128 = Math.min(+r.pct_over_128k || 0, +r.pct_over_32k || 0) / 100;
+    const longTok = (o32 - o128) * (+r.medium_mean || 69000) + o128 * (+r.large_mean || 188000);
+    const shortMean = ((+r.avg_input_tokens || 0) - longTok) / Math.max(1e-9, 1 - o32);
+    if (o32 > 0 && shortMean < 800) {
+      const w = document.createElement("span");
+      w.className = "warn-text";
+      w.textContent = ` Prompts over 32K alone average ${fmtInt(longTok)} tokens per request, more than fits in the average prompt size (${fmtInt(+r.avg_input_tokens || 0)}): raise the average (it includes long prompts) or lower the long-prompt share.`;
+      $("bucketText").appendChild(w);
+    }
   }
 
   // ---------------------------------------------------------------- waterline
@@ -1801,7 +1812,7 @@
     rows.push(["Total a month, overflow included", fmtUSD(r.total)]);
     const baseRows = bl.feasible
       ? `<tr><td>MaaS only, a month</td><td>${fmtUSD(bl.total)}</td></tr>`
-      : `<tr><td>MaaS only can't serve the peak: ${fmtRps(bl.peakRps)} req/s vs a limit of ${fmtRps(bl.capRps)} req/s</td><td></td></tr>
+      : `<tr><td>MaaS only can't serve the peak: ${fmtRps(bl.peakRps)} req/s vs a limit of ${fmtRps(bl.capRps)} req/s, planned at ${(bl.capRps / Math.max(1, +(S.p && S.p.headroom) || 1)).toFixed(1)} per hour to absorb bursts</td><td></td></tr>
          <tr><td>Baseline: MaaS up to its limit</td><td>${fmtUSD(bl.maasCost)}</td></tr>
          <tr><td>Baseline: overflow to ${esc(targetName(bl.target))}</td><td>${fmtUSD(bl.overflowCost)}</td></tr>
          <tr><td>Baseline, a month</td><td>${fmtUSD(bl.total)}</td></tr>`;

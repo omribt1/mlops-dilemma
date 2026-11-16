@@ -78,9 +78,9 @@ def test_ref_mix_factor_rules(blog):
 def test_blog_numbers_unchanged_without_long_prompts(blog):
     cfg, ch = blog
     gke = costmodel.scenario(cfg, TPS, ch["prices"], "cud_3y", 1)
-    assert gke["gpus"] == 12 and round(gke["total"] / 1e3) == 21 and round(gke["vs_baseline"] * 100) == 74
+    assert gke["gpus"] == 12 and round(gke["total"] / 1e3) == 21 and round(gke["vs_baseline"] * 100) == 65
     vtx = costmodel.scenario(cfg, TPS, ch["prices"], "vertex_cud_3y", 1)
-    assert vtx["gpus"] == 12 and round(vtx["total"] / 1e3) == 25 and round(vtx["vs_baseline"] * 100) == 91
+    assert vtx["gpus"] == 12 and round(vtx["total"] / 1e3) == 25 and round(vtx["vs_baseline"] * 100) == 79
     # No prompts over 32K: routing changes nothing (f_now = 1, nothing to route).
     assert costmodel.scenario(cfg, TPS, ch["prices"], "cud_3y", 1, route_long=True)["gpus"] == 12
 
@@ -244,12 +244,12 @@ def test_example_session_numbers(client):
     assert d["dashboard_data"]["defaults"]["pricing"] == "vertex_cud_1y"
     md = d["report_md"]
     # MaaS (15 req/s) can't serve the 28 req/s peak: the verdict compares against MaaS up to its limit + Flash-Lite.
-    assert "MaaS can't serve your peak: limit 15 req/s vs 28.0 req/s at peak" in md
+    assert "MaaS can't serve your peak: limit 15 req/s (planned at 11.5 req/s per hour to absorb bursts) vs 28.0 req/s at peak" in md
     # The saved pricing option (1-yr reservation) drives the headline, and self-hosting loses.
     assert "Your pricing option: **Agent Platform + reservation, 1-yr** — **$36K/month** with 12 GPUs" in md
-    assert "**128% of that baseline**" in md and "Stay on MaaS up to its limit" in md
+    assert "**112% of that baseline**" in md and "Stay on MaaS up to its limit" in md
     row = next(line for line in md.splitlines() if line.startswith("| Agent Platform + reservation, 1-yr |"))
-    assert "| 12 | $36K | 128% |" in row
+    assert "| 12 | $36K | 112% |" in row
     assert "assumption for this illustrative example" in d["dashboard_data"]["throughput"]["label"]
 
 

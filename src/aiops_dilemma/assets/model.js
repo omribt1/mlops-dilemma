@@ -83,8 +83,11 @@
     // Mix cost factor: GPU time per token of this mix relative to short (<=32K) prompts (1 with none over 32K).
     b.mixFactor = over32 > 0 ? Math.max(1, weightedTime) : 1;
     b.penaltySource = pen.source;
+    b.totalMean = totalMean;   // mean request size of the mix (costmodel buckets total_mean)
     return b;
   }
+  // Average input tokens per request of the size mix (costmodel.mean_request_tokens).
+  function meanRequestTokens(p) { return +p.avgInput || 0; }   // the configured average (see costmodel)
 
   function demand(base, p) {
     const peak = Math.max(...base);
@@ -244,18 +247,21 @@
 
   // Pay-per-token baseline honest about the MaaS rate limit (costmodel.baseline): everything on MaaS when the peak
   // fits its limit, else MaaS up to the limit each hour + overflow to the failover target.
+  // MaaS planned at limit / headroom per hour, as for a fleet's overflow (costmodel.baseline).
   function baselineOf(D, p, rate, gemMap, failTarget, outRatio, cache) {
     const scale = 730 / D.length;
-    const peakRps = Math.max(...D) / Math.max(1, p.avgInput);
+    const meanIn = meanRequestTokens(p);
+    const peakRps = Math.max(...D) / Math.max(1, meanIn);
     const capRps = Math.max(0, +p.maasRps || 0);
-    const feasible = peakRps <= capRps + 1e-9;
+    const headroom = Math.max(1, +p.headroom || 1);
+    const feasible = peakRps <= capRps / headroom + 1e-9;
     let base;
     if (feasible) {
       const total = D.reduce((s, d) => s + d, 0) * 3600 * scale * rate;
       base = { kind: "maas_only", total, maas_cost: total, overflow_cost: 0, overflow_target: null,
                label: "Open-model MaaS only" };
     } else {
-      const key = failoverKey(failTarget, gemMap), gem = gemMap[key], capTps = capRps * p.avgInput;
+      const key = failoverKey(failTarget, gemMap), gem = gemMap[key], capTps = capRps * meanIn / headroom;
       let onMaas = 0, over = 0;
       for (const d of D) { const m = Math.min(d, capTps); onMaas += m; over += d - m; }
       const maasCost = onMaas * 3600 * scale * rate;
@@ -265,7 +271,8 @@
                label: capRps > 0 ? `Open-model MaaS up to ${capRps} req/s + ${gem.name} overflow`
                                  : `${gem.name} only (open-model MaaS limit is 0 req/s)` };
     }
-    return { maasOnlyFeasible: feasible, maasPeakRps: peakRps, maasCapRps: capRps, baseline: base };
+    return { maasOnlyFeasible: feasible, maasPeakRps: peakRps, maasCapRps: capRps, maasPlannedRps: capRps / headroom,
+             baseline: base };
   }
 
   // Hardware redundancy multiplier: missing, blank, NaN or < 1 -> 1 (a blank <select> once gave 0 GPUs).
@@ -354,7 +361,8 @@
     const sizeFleet = (Dfleet, perChip, capTps, rate_, outR, cacheR, meanIn) => {
       const gRate = geminiRate(gemMap[spillTarget], outR, cacheR);
       const gCap = ovGem ? GEMINI_OVERFLOW_RPS * meanIn : null;
-      const opt = fixedFleet(Dfleet, perChip, replica, price, capTps, rate_, p.headroom, gRate, gCap);
+      // Standby chips (resilience > 1) make each serving chip cost resilience x price (costmodel.scenario).
+      const opt = fixedFleet(Dfleet, perChip, replica, price * resilience, capTps, rate_, p.headroom, gRate, gCap);
       optimal = opt;
       out.optimalGpus = opt ? opt.gpus : null;
       out.optimalReplicas = opt ? opt.gpus / replica : null;
@@ -369,9 +377,9 @@
 
     let fleet = null, Dfleet = D;
     if (!doRoute) {
-      fleet = sizeFleet(D, perGpu, maasRps * p.avgInput, rate, outRatio, cache, p.avgInput);
+      fleet = sizeFleet(D, perGpu, maasRps * meanRequestTokens(p), rate, outRatio, cache, meanRequestTokens(p));
       out.capPerGpu = perGpu;
-      out.maasCapTps = maasRps * p.avgInput;
+      out.maasCapTps = maasRps * meanRequestTokens(p);
     } else {
       const longShare = b.longTokenShare;
       const longReq = b.longReqShare;
@@ -443,9 +451,12 @@
   }
 
   function incidents(DATA, p, r) {
-    const day = r.demand.slice(0, 24);
-    const peak = Math.max(...day);
-    const maasCap = p.maasRps * p.avgInput;
+    // The week's busiest hour and the day containing it (costmodel.resilience_and_hybrid_summary).
+    const peakHour = r.demand.indexOf(Math.max(...r.demand));
+    const d0 = Math.floor(peakHour / 24) * 24;
+    const day = r.demand.slice(d0, d0 + 24);
+    const peak = r.demand[peakHour];
+    const maasCap = p.maasRps * meanRequestTokens(p) / Math.max(1, +p.headroom || 1);   // as planned for overflow
     const spillDay = day.reduce((s, d) => s + Math.max(d - maasCap, 0), 0) * 3600;
     const spillPeakHour = Math.max(peak - maasCap, 0) * 3600;
     const maasPeakHour = Math.min(peak, maasCap) * 3600;

@@ -89,13 +89,16 @@ def verdict_lines(b: dict, tier_label: str, gem_cat: dict, fixed: bool = False) 
     if b["maas_only_feasible"]:
         out = [f"{lead}: **{tier_label}** — **{money(b['total'])}/month** with {b['gpus']} GPUs "
                f"(+ MaaS overflow), **{b['vs_maas']:.0%} of MaaS-only** ({money(b['maas_only'])}/month at your "
-               f"traffic; peak {b['maas_peak_rps']:.1f} req/s fits the {b['maas_cap_rps']:g} req/s limit). {util}\n"]
+               f"traffic; peak {b['maas_peak_rps']:.1f} req/s fits the {b['maas_cap_rps']:g} req/s limit, planned at "
+               f"{b.get('maas_planned_rps', b['maas_cap_rps']):.1f} req/s per hour). {util}\n"]
         if b["vs_baseline"] > 1:
             out.append("Self-hosting costs more than MaaS at this traffic shape. It still makes sense for data-control "
                        "reasons, or if your off-peak load grows (see sensitivity).\n")
         return out
     over_name = (gem_cat.get(bl["overflow_target"]) or {}).get("name", bl["overflow_target"])
-    out = [f"MaaS can't serve your peak: limit {b['maas_cap_rps']:g} req/s vs {b['maas_peak_rps']:.1f} req/s at peak; "
+    planned = b.get("maas_planned_rps", b["maas_cap_rps"])
+    out = [f"MaaS can't serve your peak: limit {b['maas_cap_rps']:g} req/s (planned at {planned:.1f} req/s per hour to "
+           f"absorb bursts) vs {b['maas_peak_rps']:.1f} req/s at peak; "
            f"MaaS up to its limit plus {over_name} overflow would cost **{money(bl['total'])}/month** "
            f"({money(bl['maas_cost'])} MaaS + {money(bl['overflow_cost'])} {over_name}).\n",
            f"{lead}: **{tier_label}** — **{money(b['total'])}/month** with {b['gpus']} GPUs "

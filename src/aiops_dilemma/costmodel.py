@@ -107,7 +107,7 @@ def gemini_rate(gem: dict, out_ratio: float, cache: float, is_long: bool = False
     lc = long_tier(gem) if is_long else None
     inp = lc["input_per_m"] if lc else gem["input_per_m"]
     outp = lc["output_per_m"] if lc else gem["output_per_m"]
-    cached = lc["cached_per_m"] if lc else gem.get("cached_per_m", inp * 0.25)
+    cached = lc["cached_per_m"] if lc else gem.get("cached_per_m", inp * 0.1)
     return ((1 - cache) * inp + cache * cached + out_ratio * outp) / 1e6
 
 
@@ -152,7 +152,7 @@ def gemini_long_rate(gem: dict, b: dict, classes=("medium", "large")) -> float:
     blended class when the model has a single price. Mirrors model.js geminiLongRate."""
     lc = long_tier(gem)
     inp, outp = float(gem["input_per_m"]), float(gem["output_per_m"])
-    cached = float(gem.get("cached_per_m", inp * 0.25))
+    cached = float(gem.get("cached_per_m", inp * 0.1))
     tot = cost = 0.0
     for k in classes:
         v = b[k]
@@ -273,7 +273,17 @@ def buckets(cfg: dict, short_tps: float | None = None) -> dict:
         "small_speedup": max(1.0, small_speedup),
         "mix_factor": max(1.0, mix_factor),
         "penalty_source": pen["source"],
+        # Mean request size of the class mix: avg_input_tokens, unless the short class hit its 800-token floor
+        # because the long tail is too heavy for that average (short_floor_hit: config warns about it).
+        "total_mean": total_mean,
+        "short_floor_hit": over32 > 0 and (avg_in - med_req * med_mean - lrg_req * lrg_mean) / sml_req < 800.0,
     }
+
+
+def mean_request_tokens(cfg: dict) -> float:
+    """Average input tokens per request, for turning tok/s into requests/s: the configured avg_input_tokens (the
+    input you know). A long tail too heavy for it is reported (config._mix_warning), not silently resized."""
+    return float(cfg["requests"].get("avg_input_tokens") or 0.0)
 
 
 def mix_factor(cfg: dict, short_tps: float | None = None) -> float:
@@ -383,17 +393,19 @@ def fixed_fleet(demand, per_gpu, replica, price, maas_cap_tps, rate, headroom, g
 
 
 def baseline(demand, cfg: dict, maas_rps: float, rate: float, gem_cat: dict, failover_target: str | None,
-             out_ratio: float, cache: float) -> dict:
+             out_ratio: float, cache: float, headroom: float = 1.0) -> dict:
     """Pay-per-token baseline that respects the open-model MaaS rate limit.
 
-    Feasible (peak requests/s <= limit): everything on MaaS ("maas_only"). Otherwise MaaS serves up to its limit
-    each hour and the rest overflows to the failover target ("maas_plus_overflow").
+    MaaS is planned at limit / headroom per hour, exactly as for a fleet's overflow (hourly averages hide bursts that
+    would hit the limit). Feasible (peak requests/s <= limit / headroom): everything on MaaS ("maas_only").
+    Otherwise MaaS serves up to that each hour and the rest overflows to the failover target ("maas_plus_overflow").
     """
     scale = HOURS_PER_MONTH / len(demand)
-    avg_in = float(cfg["requests"]["avg_input_tokens"])
+    avg_in = mean_request_tokens(cfg)
     peak_rps = float(demand.max()) / max(1.0, avg_in)
     cap_rps = max(0.0, float(maas_rps or 0.0))
-    feasible = peak_rps <= cap_rps + 1e-9
+    headroom = max(1.0, float(headroom or 1.0))
+    feasible = peak_rps <= cap_rps / headroom + 1e-9
     if feasible:
         total = float(demand.sum()) * 3600 * scale * rate
         base = {"kind": "maas_only", "total": total, "maas_cost": total, "overflow_cost": 0.0,
@@ -401,7 +413,7 @@ def baseline(demand, cfg: dict, maas_rps: float, rate: float, gem_cat: dict, fai
     else:
         key = failover_key(failover_target, gem_cat)
         gem = gem_cat[key]
-        cap_tps = cap_rps * avg_in
+        cap_tps = cap_rps * avg_in / headroom
         on_maas = np.minimum(demand, cap_tps)
         over = demand - on_maas
         maas_cost = float(on_maas.sum()) * 3600 * scale * rate
@@ -411,7 +423,8 @@ def baseline(demand, cfg: dict, maas_rps: float, rate: float, gem_cat: dict, fai
                 "overflow_cost": over_cost, "overflow_target": key,
                 "label": (f"Open-model MaaS up to {cap_rps:g} req/s + {name} overflow" if cap_rps > 0
                           else f"{name} only (open-model MaaS limit is 0 req/s)")}
-    return {"maas_only_feasible": feasible, "maas_peak_rps": peak_rps, "maas_cap_rps": cap_rps, "baseline": base}
+    return {"maas_only_feasible": feasible, "maas_peak_rps": peak_rps, "maas_cap_rps": cap_rps,
+            "maas_planned_rps": cap_rps / headroom, "baseline": base}
 
 
 def scenario(cfg: dict, per_gpu: float, prices: dict, tier: str, replica: int, *, off_peak=1.0, growth=1.0,
@@ -457,7 +470,8 @@ def scenario(cfg: dict, per_gpu: float, prices: dict, tier: str, replica: int, *
     gem_quota_rps = GEMINI_OVERFLOW_RPS if ov_gem else None   # Gemini quota beyond the MaaS limit at peaks
 
     maas_only = tokens * rate
-    base_info = baseline(demand, cfg, rps, rate, gem_cat, fail_key, out_ratio, cache)
+    base_info = baseline(demand, cfg, rps, rate, gem_cat, fail_key, out_ratio, cache,
+                         headroom=cfg["constraints"]["burst_headroom"])
     common = {"tier": tier, "maas_only": maas_only, "monthly_tokens": tokens, "peak": float(demand.max()),
               "avg": float(demand.mean()), "buckets": b, "effective_output_tokens": effective_output_tokens(cfg["requests"]),
               "peak_overflow_target": ov_target, "failover_target": fail_key, **base_info}
@@ -503,7 +517,7 @@ def scenario(cfg: dict, per_gpu: float, prices: dict, tier: str, replica: int, *
         fail_out, fail_cache = b["small"]["out_ratio"], b["small"]["cached"]
         long_maas_cost = float(long_tps.sum()) * 3600 * scale * long_rate
     else:
-        mean_in = float(cfg["requests"]["avg_input_tokens"])
+        mean_in = mean_request_tokens(cfg)
         fleet_args = (demand, blended_per_gpu, prices[tier], float(rps or 0) * mean_in, rate,
                       cfg["constraints"]["burst_headroom"])
         fail_out, fail_cache = out_ratio, cache
@@ -511,7 +525,10 @@ def scenario(cfg: dict, per_gpu: float, prices: dict, tier: str, replica: int, *
     spill_key = ov_target if ov_gem else fail_key        # Gemini tier that takes spill beyond the MaaS cap
     gem_rate_used = gemini_rate(gem_cat[spill_key], fail_out, fail_cache)
     gem_cap = gem_quota_rps * mean_in if gem_quota_rps else None
-    fleet = fixed_fleet(d_fleet, chip_tps, replica, price, cap_tps, maas_rate_used, headroom, gem_rate_used, gem_cap)
+    # Redundant chips are standby capacity on top of the serving fleet: each serving chip really costs res x price,
+    # so the optimizer weighs chips against overflow at that price (res = 1: unchanged).
+    fleet = fixed_fleet(d_fleet, chip_tps, replica, price * res, cap_tps, maas_rate_used, headroom, gem_rate_used,
+                        gem_cap)
     optimal = fleet
     if fleet_override is not None:
         n = max(0, int(round(float(fleet_override)))) * max(1, replica)
@@ -598,7 +615,8 @@ def resilience_and_hybrid_summary(cfg: dict, per_gpu: float, prices: dict, tier:
     peak_hour = int(np.argmax(demand))                 # the week's busiest hour, whichever day it falls on
     day = demand[(peak_hour // 24) * 24:(peak_hour // 24) * 24 + 24]   # and the day that contains it
     peak_tps = float(demand[peak_hour])
-    maas_cap_tps = float(cfg["maas"].get("max_rps") or 0.0) * float(cfg["requests"]["avg_input_tokens"])
+    maas_cap_tps = (float(cfg["maas"].get("max_rps") or 0.0) * mean_request_tokens(cfg)
+                    / max(1.0, float(cfg["constraints"].get("burst_headroom") or 1.0)))   # as planned for overflow
     spill_peak_hour_tok = max(0.0, peak_tps - maas_cap_tps) * 3600.0
     spill_full_day_tok = float(np.maximum(day - maas_cap_tps, 0.0).sum()) * 3600.0
     maas_peak_hour_tok = min(peak_tps, maas_cap_tps) * 3600.0

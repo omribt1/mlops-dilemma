@@ -1,4 +1,4 @@
-# aiops-dilemma workload definition (manual mode).
+# mlops-dilemma workload definition (manual mode).
 # Every number here is yours: traffic shape, request profile, MaaS price/limits, constraints.
 # Run:  dilemma plan -c examples/workload.yaml   (then prompts / deploy / load / analyze / report)
 #   or: dilemma auto -c examples/workload.yaml   (end to end, tears the endpoint down at the end)

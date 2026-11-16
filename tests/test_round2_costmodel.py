@@ -36,7 +36,7 @@ def _sc(cfg, ch, tier="cud_3y", **kw):
 def test_blog_baseline_is_maas_plus_flash_lite_overflow(blog):
     cfg, ch = blog
     r = _sc(cfg, ch, "vertex_cud_1y")
-    assert r["gpus"] == 12 and round(r["total"] / 1e2) == 358 and round(r["vs_baseline"], 2) == 1.28
+    assert r["gpus"] == 12 and round(r["total"] / 1e2) == 358 and round(r["vs_baseline"], 2) == 1.12
     assert r["maas_only_feasible"] is False
     assert r["maas_cap_rps"] == 15 and r["maas_peak_rps"] == pytest.approx(r["peak"] / 5000)
     b = r["baseline"]
@@ -51,7 +51,7 @@ def test_blog_baseline_is_maas_plus_flash_lite_overflow(blog):
 
 def test_baseline_feasible_when_limit_covers_peak(blog):
     cfg, ch = blog
-    r = _sc(cfg, ch, maas_rps=30)
+    r = _sc(cfg, ch, maas_rps=40)   # planned at 40 / 1.3 = 30.8 req/s > the 28 req/s peak
     assert r["maas_only_feasible"] is True
     assert r["baseline"]["kind"] == "maas_only" and r["baseline"]["overflow_target"] is None
     assert r["baseline"]["total"] == pytest.approx(r["maas_only"]) and r["vs_baseline"] == pytest.approx(r["vs_maas"])
@@ -220,12 +220,13 @@ def test_report_verdict_wording(blog):
     ep = {k: ch[k] for k in ("machine_type", "accelerator_type", "accelerator_count")}
     est = {"endpoint": ep, "levels": [], "estimated": True, "input_tps_per_gpu": TPS, "throughput_source": "override"}
     md = report.render(cfg, {"candidates": []}, est, ch["prices"])
-    assert "MaaS can't serve your peak: limit 15 req/s vs 28.0 req/s at peak; MaaS up to its limit plus" in md
+    assert ("MaaS can't serve your peak: limit 15 req/s (planned at 11.5 req/s per hour to absorb bursts) vs 28.0 "
+            "req/s at peak; MaaS up to its limit plus") in md
     assert "Vertex AI" not in md.split("## Planner candidates")[0]
     c = copy.deepcopy(cfg)
-    c["maas"]["max_rps"] = 30
+    c["maas"]["max_rps"] = 40   # planned at 40 / 1.3 = 30.8 req/s, above the 28 req/s peak
     md2 = report.render(c, {"candidates": []}, est, ch["prices"])
-    assert "can't serve" not in md2 and "of MaaS-only** (" in md2 and "fits the 30 req/s limit" in md2
+    assert "can't serve" not in md2 and "of MaaS-only** (" in md2 and "fits the 40 req/s limit, planned at 30.8 req/s per hour" in md2
 
 
 # Python <-> model.js parity for the new fields ---------------------------------------------------------------------------

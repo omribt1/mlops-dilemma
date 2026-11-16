@@ -129,7 +129,7 @@ def sample_requests(cfg: dict, t0_h: int, t1_h: int, scenario: str = "gpu", burs
     tokens = np.empty(len(t))
     # Same size model as the synthetic prompt builder (prompts._sample_input).
     sigma = 0.62
-    mu = math.log(mix["mean"]["small"]) - sigma ** 2 / 2
+    mu = traffic.clipped_lognormal_mu(mix["mean"]["small"], sigma, 400, SHORT_MAX)   # clipped mean on target
     s = bucket == 0
     tokens[s] = np.clip(rng.lognormal(mu, sigma, int(s.sum())), 400, SHORT_MAX)
     m = bucket == 1

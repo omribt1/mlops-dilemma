@@ -1,4 +1,4 @@
-"""FastAPI backend server for the aiops-dilemma interactive web application (`dilemma ui`)."""
+"""FastAPI backend server for the mlops-dilemma interactive web application (`dilemma ui`)."""
 
 import asyncio
 import contextlib
@@ -59,7 +59,7 @@ async def _lifespan(_app):
 
 CLOUD = paths.cloud_mode()   # shared Cloud Run deployment behind IAP (K_SERVICE set, or DILEMMA_CLOUD=1)
 # No interactive API docs on the shared deployment (less surface; the UI is the interface).
-app = FastAPI(title="aiops-dilemma Interactive UI", version="0.2.0", lifespan=_lifespan,
+app = FastAPI(title="mlops-dilemma Interactive UI", version="0.2.0", lifespan=_lifespan,
               **({"docs_url": None, "redoc_url": None, "openapi_url": None} if CLOUD else {}))
 _SESSION_RX = re.compile(r"^/api/sessions/([^/]+)")
 
@@ -80,7 +80,7 @@ def audit(event: str, request: Request | None = None, **fields) -> None:
     line = {"severity": "WARNING" if event.endswith("denied") else "NOTICE",
             "message": f"{event}: {rec.get('method', '')} {rec.get('path', '')} by {rec['user'] or 'unknown'}"
                        + (f" -> {rec['status']}" if "status" in rec else ""),
-            "audit": rec, "logging.googleapis.com/labels": {"app": "aiops-dilemma", "user": rec["user"] or ""}}
+            "audit": rec, "logging.googleapis.com/labels": {"app": "mlops-dilemma", "user": rec["user"] or ""}}
     print(json.dumps(line, default=str), flush=True)
 
 

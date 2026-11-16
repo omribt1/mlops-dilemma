@@ -1,4 +1,4 @@
-# Production image for `dilemma ui` (Cloud Run). Build: docker build -t aiops-dilemma .
+# Production image for `dilemma ui` (Cloud Run). Build: docker build -t mlops-dilemma .
 # No credentials are baked in: on Cloud Run the app uses the runtime service account (metadata server); locally,
 # mount an ADC file read-only and point GOOGLE_APPLICATION_CREDENTIALS at it.
 FROM python:3.12-slim

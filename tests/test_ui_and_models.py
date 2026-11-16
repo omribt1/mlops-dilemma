@@ -114,7 +114,7 @@ def test_fastapi_server_endpoints(tmp_path, monkeypatch):
 
     r_idx = client.get("/")
     assert r_idx.status_code == 200
-    assert "aiops-dilemma" in r_idx.text
+    assert "mlops-dilemma" in r_idx.text
 
     r_cat = client.get("/api/catalog")
     assert r_cat.status_code == 200

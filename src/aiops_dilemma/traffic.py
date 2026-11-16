@@ -185,3 +185,29 @@ def raise_off_peak(demand: np.ndarray, factor: float) -> np.ndarray:
     """Off-peak hours grow `factor`x (e.g. other time zones; clamped to 1-10); the busiest hour stays the same."""
     factor = min(10.0, max(1.0, float(factor)))
     return np.minimum(demand * factor, demand.max())
+
+
+def clipped_lognormal_mu(target_mean: float, sigma: float, lo: float, hi: float) -> float:
+    """mu such that a lognormal(mu, sigma) clipped to [lo, hi] has mean `target_mean`.
+
+    Clipping changes the mean (the upper tail is cut at `hi`, the lower raised to `lo`), so mu = ln(mean) - sigma^2/2
+    undershoots when the target is a sizeable share of `hi`. E[clip(X)] = lo P(X<lo) + hi P(X>hi) + E[X; lo<X<hi],
+    increasing in mu, solved by bisection. Targets outside (lo, hi) are clamped just inside.
+    """
+    def phi(z: float) -> float:
+        return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
+
+    def clipped_mean(mu: float) -> float:
+        a, b = (math.log(lo) - mu) / sigma, (math.log(hi) - mu) / sigma
+        mid = math.exp(mu + sigma * sigma / 2) * (phi(b - sigma) - phi(a - sigma))
+        return lo * phi(a) + hi * (1.0 - phi(b)) + mid
+
+    t = min(max(float(target_mean), lo * 1.001), hi * 0.999)
+    a, b = math.log(lo) - 6 * sigma, math.log(hi) + 6 * sigma
+    for _ in range(100):
+        m = (a + b) / 2
+        if clipped_mean(m) < t:
+            a = m
+        else:
+            b = m
+    return (a + b) / 2

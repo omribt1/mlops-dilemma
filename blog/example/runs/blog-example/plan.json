@@ -352,7 +352,7 @@
   "availability": {
     "source": "compute_api",
     "region": "us-central1",
-    "fetched_at": 1794264581,
+    "fetched_at": 1794859493,
     "not_offered": [],
     "unrated": [
       {

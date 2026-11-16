@@ -43,7 +43,7 @@ def _sc(cfg, ch, **kw):
 def test_default_policy_flags_on_the_blog_example(blog):
     cfg, ch = blog
     opt = _sc(cfg, ch)
-    assert opt["gpus"] == 12 and round(opt["total"] / 1e2) == 358 and round(opt["vs_baseline"], 2) == 1.28   # unchanged
+    assert opt["gpus"] == 12 and round(opt["total"] / 1e2) == 358 and round(opt["vs_baseline"], 2) == 1.12   # baseline plans MaaS at limit / headroom
     assert opt["min_policy_gpus"] == 12 and opt["headroom_gpus"] == 12 and opt["policy_ok"]
     assert not opt["gemini_allowed_at_peaks"] and opt["spill_gemini_target"] == "gemini_flash_lite"
     # 11 GPUs: no spill beyond the MaaS cap, but below the 1.3x headroom bound
@@ -61,7 +61,7 @@ def test_default_policy_flags_on_the_blog_example(blog):
 def test_verdict_hint_on_the_blog_example(blog):
     cfg, ch = blog
     h = _sc(cfg, ch)["peak_gemini_hint"]
-    assert h["target"] == "gemini_flash_lite" and h["gpus"] == 5 and round(h["vs_baseline"], 2) == 1.04
+    assert h["target"] == "gemini_flash_lite" and h["gpus"] == 5 and round(h["vs_baseline"], 2) == 0.91
     alt = _sc(cfg, ch, peak_overflow_target="gemini_flash_lite")
     assert alt["gpus"] == 5 and round(alt["gemini_overflow_cost"] / 1e2) == 89 and "peak_gemini_hint" not in alt
     assert h["total"] == pytest.approx(alt["total"]) and h["saving"] == pytest.approx(_sc(cfg, ch)["total"] - alt["total"])

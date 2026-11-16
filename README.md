@@ -1,4 +1,4 @@
-# aiops-dilemma
+# mlops-dilemma
 
 **When does self-hosting an open model pay off vs a managed model API (MaaS)?**
 This repo answers it for *your* traffic: it deploys the model on an Agent Platform endpoint, load-tests it
@@ -7,6 +7,7 @@ cost against pay-per-token MaaS — including the cases where MaaS can't serve y
 
 Companion to the blog post [*You Want to Self-Host Your LLM. Here's What the Napkin Math Leaves Out.*](https://medium.com/google-cloud/you-want-to-self-host-your-llm-heres-what-the-napkin-math-leaves-out-21006f7492fa)
 (Google Cloud Community on Medium); its example workload and run are in `blog/example/`.
+How every number is calculated: [docs/methodology.md](docs/methodology.md).
 
 ## What it does
 
@@ -52,7 +53,7 @@ Prerequisites: a GCP project with Agent Platform enabled, GPU quota for predicti
 and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-git clone https://github.com/omribt1/aiops-dilemma.git && cd aiops-dilemma
+git clone https://github.com/omribt1/mlops-dilemma.git && cd mlops-dilemma
 uv sync
 
 # Auto mode: model + a few traffic numbers -> everything else is chosen/generated for you
@@ -453,11 +454,11 @@ To remove everything:
 cloud mode's restrictions without IAP).
 
 ```bash
-docker build -t aiops-dilemma:local .
+docker build -t mlops-dilemma:local .
 docker run --rm -p 8110:8080 --user $(id -u):$(id -g) -e HOME=/tmp \
   -e DILEMMA_RUNS_DIR=/data/runs -e DILEMMA_CACHE_DIR=/data/cache -v $(mktemp -d):/data \
   -v ~/.config/gcloud/application_default_credentials.json:/secrets/adc.json:ro \
-  -e GOOGLE_APPLICATION_CREDENTIALS=/secrets/adc.json aiops-dilemma:local
+  -e GOOGLE_APPLICATION_CREDENTIALS=/secrets/adc.json mlops-dilemma:local
 ```
 
 ## Repo layout

@@ -18,7 +18,7 @@ import random
 import urllib.request
 from pathlib import Path
 
-from aiops_dilemma import paths
+from aiops_dilemma import paths, traffic
 from aiops_dilemma.config import normalize_buckets
 
 FALLBACK_CHARS_PER_TOKEN = 3.5
@@ -82,7 +82,7 @@ def _sample_input(rng: random.Random, req: dict) -> int:
     long_mean = over128 * lrg_mean + (over32 - over128) * med_mean
     body_mean = max(800.0, (req["avg_input_tokens"] - long_mean) / max(1e-9, 1.0 - over32))
     sigma = 0.62
-    mu = math.log(body_mean) - sigma ** 2 / 2
+    mu = traffic.clipped_lognormal_mu(body_mean, sigma, 400, 32000)   # the clipped sizes average body_mean
     return int(min(32000, max(400, rng.lognormvariate(mu, sigma))))
 
 

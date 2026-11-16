@@ -199,13 +199,13 @@ def test_blog_example_numbers(blog):
     assert round(traffic.monthly_tokens(w) / 1e9) == 79
     r = _sc(cfg, ch)
     assert r["gpus"] == 12 and round(r["total"] / 1e2) == 358
-    assert r["baseline"]["kind"] == "maas_plus_overflow" and round(r["baseline"]["total"] / 1e2) == 280
-    assert round(r["vs_baseline"], 2) == 1.28 and round(r["maas_only"] / 1e2) == 174
-    for op, want in ((1.5, 1.02), (2, 0.93), (4, 0.78)):
+    assert r["baseline"]["kind"] == "maas_plus_overflow" and round(r["baseline"]["total"] / 1e2) == 319
+    assert round(r["vs_baseline"], 2) == 1.12 and round(r["maas_only"] / 1e2) == 174
+    for op, want in ((1.5, 0.90), (2, 0.82), (4, 0.69)):
         assert round(_sc(cfg, ch, off_peak=op)["vs_baseline"], 2) == want, op
-    for tier, want in (("vertex_cud_3y", 0.91), ("cud_3y", 0.74), ("cud_1y", 1.09), ("vertex", 1.95)):
+    for tier, want in (("vertex_cud_3y", 0.79), ("cud_3y", 0.65), ("cud_1y", 0.95), ("vertex", 1.71)):
         assert round(_sc(cfg, ch, tier)["vs_baseline"], 2) == want, tier
-    for preset, want in (("us_europe", 0.87), ("follow_the_sun", 0.75), ("steady", 0.64)):
+    for preset, want in (("us_europe", 0.82), ("follow_the_sun", 0.75), ("steady", 0.64)):
         c = copy.deepcopy({k: v for k, v in cfg.items() if not k.startswith("_")})
         c["traffic"] = {"preset": preset, "average_input_tps": 30000}
         assert round(_sc(config.normalize(c), ch)["vs_baseline"], 2) == want, preset

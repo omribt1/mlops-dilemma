@@ -264,6 +264,7 @@ def normalize(raw: dict, path: str | None = None) -> dict:
         cfg["region"] = regions.DEFAULT
     else:
         cfg.pop("_region_warning", None)
+    _mix_check(cfg)
     maas = cfg.get("maas") if isinstance(cfg.get("maas"), dict) else {}
     rps = max(0.0, _num(maas.get("max_rps"), 0.0))   # null / missing = no MaaS overflow, never a crash
     maas["max_rps"] = int(rps) if rps == int(rps) else rps
@@ -338,12 +339,33 @@ def _normalize_traffic(cfg: dict) -> None:
         cfg.pop("_warnings", None)
 
 
+def _mix_check(cfg: dict) -> None:
+    """Warn when the long tail (pct_over_32k / pct_over_128k at medium_mean / large_mean) doesn't fit in
+    avg_input_tokens: the short prompts would have to average under 800 tokens (costmodel.buckets clamps them)."""
+    r = cfg.get("requests") or {}
+    try:
+        avg = float(r.get("avg_input_tokens") or 0)
+        o32 = max(0.0, min(100.0, float(r.get("pct_over_32k") or 0))) / 100
+        o128 = max(0.0, min(o32 * 100, float(r.get("pct_over_128k") or 0))) / 100
+        long_tok = (o32 - o128) * float(r.get("medium_mean") or 69000) + o128 * float(r.get("large_mean") or 188000)
+        short_mean = (avg - long_tok) / max(1e-9, 1 - o32)
+    except (TypeError, ValueError):
+        return
+    if o32 > 0 and short_mean < 800:
+        cfg["_mix_warning"] = (f"prompts over 32K alone average {long_tok:,.0f} tokens per request, more than fits in "
+                               f"avg_input_tokens = {avg:,.0f}: raise avg_input_tokens (it includes long prompts) or "
+                               "lower pct_over_32k / the long-prompt sizes")
+    else:
+        cfg.pop("_mix_warning", None)
+
+
 def load(path: str) -> dict:
     with open(path) as f:
         raw = yaml.safe_load(f) or {}
     cfg = normalize(raw, path=path)
-    if cfg.get("_region_warning"):
-        print(f"warning: {path}: {cfg['_region_warning']}", file=sys.stderr)
+    for w in ("_region_warning", "_mix_warning"):
+        if cfg.get(w):
+            print(f"warning: {path}: {cfg[w]}", file=sys.stderr)
     missing = []
     if not cfg.get("project"):
         missing.append("project")

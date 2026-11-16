@@ -1,5 +1,5 @@
 [project]
-name = "aiops-dilemma"
+name = "mlops-dilemma"
 version = "0.1.0"
 description = "Benchmark an open model on Agent Platform endpoints and find when self-hosting pays off vs a managed model API (MaaS)"
 readme = "README.md"

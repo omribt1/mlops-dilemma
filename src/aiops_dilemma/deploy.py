@@ -61,7 +61,7 @@ def _args(cfg: dict, chosen: dict, verified: dict | None, any_image: str | None 
         args = ["python", "-m", "vllm.entrypoints.api_server", "--host=0.0.0.0", "--port=8080",
                 f"--model={m.get('hf_id') or m['model_garden_id']}", "--gpu-memory-utilization=0.9",
                 f"--tensor-parallel-size={chosen['accelerator_count']}"]
-        env = {"MODEL_ID": m.get("hf_id") or m["model_garden_id"], "DEPLOY_SOURCE": "aiops-dilemma"}
+        env = {"MODEL_ID": m.get("hf_id") or m["model_garden_id"], "DEPLOY_SOURCE": "mlops-dilemma"}
         routes = {"predict": "/generate", "health": "/ping", "port": 8080}
     # Pre-quantized or natively FP8 / INT4 / MXFP4 checkpoints carry their quantization config, which vLLM reads: only
     # FP8 from a BF16 checkpoint needs the flag (INT4 and MXFP4 never quantize on the fly; Model Garden's gpt-oss
