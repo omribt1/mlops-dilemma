@@ -5,8 +5,8 @@ This repo answers it for *your* traffic: it deploys the model on an Agent Platfo
 with your prompts (or synthetic ones shaped like them), and computes what a production fleet would
 cost against pay-per-token MaaS — including the cases where MaaS can't serve your peak.
 
-Companion to the blog post *You Want to Self-Host Your LLM. Here's What the Napkin Math Leaves Out.*; its example workload
-and run are in `blog/example/`.
+Companion to the blog post [*You Want to Self-Host Your LLM. Here's What the Napkin Math Leaves Out.*](https://medium.com/google-cloud/you-want-to-self-host-your-llm-heres-what-the-napkin-math-leaves-out-21006f7492fa)
+(Google Cloud Community on Medium); its example workload and run are in `blog/example/`.
 
 ## What it does
 

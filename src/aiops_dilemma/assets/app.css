@@ -1222,3 +1222,5 @@ td .dstat + .sub, .hw-lines .dstat + .sub { display: block; font-size: var(--t-1
 .hw-about summary { cursor: pointer; font-weight: 600; color: var(--ink); }
 .hw-about p { margin: 8px 0 0; }
 .hw-about .hw-avail { margin-top: 8px; }
+.hw-details .kv dt.cur, .hw-details .kv dd.cur { color: var(--teal-ink); font-weight: 700; }
+.hw-details .kv .sub-inline { color: var(--muted); font-weight: 500; }

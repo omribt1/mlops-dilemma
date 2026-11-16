@@ -4697,30 +4697,45 @@
     if (short > 0) ["medium", "large"].forEach((k) => { if (ps[k] === "measured") out[k + "Tps"] = short / b[k].penalty; });
     return out;
   }
+  // The row's fleet, $/M and monthly cost, all at one pricing option: the rail's "Fleet pricing" when it's fixed, else
+  // the cheapest for this candidate (as in the verdict). byTier keeps every option for the details list.
   function hwDerived(c) {
-    const r = hwDerived0(c);
-    // Monthly cost: the full cost model (fleet + all overflow) at the pricing option chosen in the rail,
-    // so the selected row matches the verdict. Falls back to $/M × monthly tokens.
-    r.monthly = null; r.monthlyTier = null;
-    if (S.data && S.p) {
-      const prices = pickTiers(c.prices);
+    const sel = hwSelected(c);
+    const byTier = candMonthlyByTier(c, sel);
+    if (byTier.length) {
       const fixed = S.ui.pricing && S.ui.pricing !== "auto" ? S.ui.pricing : null;
-      if (Object.keys(prices).length && (!fixed || prices[fixed] != null)) {
-        const data2 = Object.assign({}, S.data, { perGpu: r.sel ? S.data.perGpu : c.est_input_tps_per_gpu,
-          mixFactorRef: r.sel ? S.data.mixFactorRef : 1, classTps: r.sel ? S.data.classTps : null, replica: c.accelerator_count, prices });
-        const saved = S.data;
-        try {
-          S.data = data2; S.native = undefined;
-          const cp = candClassParams(c, r.sel);
-          const tier = fixed || cheapestTier(Object.assign({}, S.p, cp, { pricing: Object.keys(prices)[0], fleetOverride: null }));
-          const res = evaluate(Object.assign({}, S.p, cp, { pricing: tier, fleetOverride: null }), null);
-          if (res && isFinite(res.total)) { r.monthly = res.total; r.monthlyTier = tier; }
-        } catch (_) { /* fall back below */ } finally { S.data = saved; S.native = undefined; }
-      }
+      const pick = fixed ? byTier.find((m) => m.tier === fixed) : byTier.reduce((a, b) => (b.total < a.total ? b : a));
+      if (pick) return { sel, byTier, fleet: pick.gpus, usd: pick.perM, monthly: pick.total, monthlyTier: pick.tier };
+      return { sel, byTier, fleet: null, usd: null, monthly: null, monthlyTier: fixed };   // no price for that option
     }
+    // No live cost model yet (still loading): the server's figures (Agent Platform + reservation, 3-yr).
+    const r = hwDerived0(c);
     const tok = S.r && S.r.totalTok;
-    if (r.monthly == null && r.usd != null && tok) r.monthly = r.usd * tok / 1e6;
-    return r;
+    return Object.assign(r, { byTier: [], monthly: r.usd != null && tok ? r.usd * tok / 1e6 : null,
+                              monthlyTier: "vertex_cud_3y" });
+  }
+  // Full monthly bill (fleet + overflow, cheapest policy-OK fleet) for this candidate at each pricing option, computed
+  // exactly like the main Monthly column (hwDerived) but with the tier pinned. [{tier, total, gpus}]
+  function candMonthlyByTier(c, sel) {
+    const out = [];
+    if (!S.data || !S.p) return out;
+    const prices = pickTiers(c.prices);
+    (c.pricing_options || []).forEach((o) => { if (o.usd_per_chip_hour > 0 && TIER_ORDER.indexOf(o.tier) >= 0) prices[o.tier] = o.usd_per_chip_hour; });
+    const data2 = Object.assign({}, S.data, { perGpu: sel ? S.data.perGpu : c.est_input_tps_per_gpu,
+      mixFactorRef: sel ? S.data.mixFactorRef : 1, classTps: sel ? S.data.classTps : null, replica: c.accelerator_count, prices });
+    const saved = S.data;
+    try {
+      S.data = data2; S.native = undefined;
+      const cp = candClassParams(c, sel);
+      for (const t of TIER_ORDER) {
+        if (!(prices[t] > 0)) continue;
+        try {
+          const r = evaluate(Object.assign({}, S.p, cp, { pricing: t, fleetOverride: null }), null);
+          if (r && isFinite(r.total)) out.push({ tier: t, total: r.total, gpus: r.gpus, perM: r.perM });
+        } catch (_) { /* skip this tier */ }
+      }
+    } finally { S.data = saved; S.native = undefined; }
+    return out;
   }
   function hwDerived0(c) {
     const sel = hwSelected(c);
@@ -4788,8 +4803,17 @@
     const pr = candPrices(c);
     const monthlyView = S.hwView === "monthly";
     const tiers = TIER_ORDER.filter((t) => pr[t] > 0);
-    const priceRows = tiers.map((t) => `<dt>${esc(TIER_SHORT[t] || t)}</dt><dd>${fmtUSDc(pr[t])}</dd>`).join("");
-    const other = monthlyView ? `<dt>Per M input</dt><dd>${perM(row.usd)}</dd>` : `<dt>Monthly cost</dt><dd>${fmtUSD(row.monthly)}</dd>`;
+    // Every pricing option for this hardware, with the cheapest fleet at that price (it can differ by option: an
+    // expensive GPU-hour favours fewer chips and more overflow). The row's option is highlighted.
+    const costHead = monthlyView ? "Monthly cost" : "Per chip-hour";
+    const byTier = row.byTier && row.byTier.length ? row.byTier
+      : tiers.map((t) => ({ tier: t, total: null, gpus: null }));
+    const chipsTxt = (n) => (n == null ? "" : ` <span class="sub-inline">· ${n} chip${n === 1 ? "" : "s"}</span>`);
+    const costRows = byTier.filter((m) => pr[m.tier] > 0).map((m) => {
+      const cur = m.tier === row.monthlyTier ? ' class="cur"' : "";
+      const v = monthlyView ? fmtUSD(m.total) : `${fmtUSDc(pr[m.tier])}/h`;
+      return `<dt${cur}>${esc(TIER_SHORT[m.tier] || m.tier)}</dt><dd${cur}>${v}${chipsTxt(m.gpus)}</dd>`;
+    }).join("");
     const q = S.hw && S.hw.quota;
     let quota;
     if (st.state === "offregion") quota = `<p>${esc(st.title)}</p>`;
@@ -4802,7 +4826,7 @@
     if (c.verified) shape.push("Verified on Agent Platform (Model Garden recipe)");
     if (c.shape_note) shape.push(esc(ap(c.shape_note)));
     return `<div class="hw-details">
-      <section><h4>Per chip-hour</h4><dl class="kv">${priceRows}${other}</dl></section>
+      <section><h4>${costHead}</h4><dl class="kv">${costRows}</dl></section>
       <section><h4>Quota in ${esc(collectCfg().region)}</h4>${quota}</section>
       <section><h4>Shape and throughput</h4><ul class="plain">${shape.map((x) => `<li>${x}</li>`).join("")}</ul>
         ${precSupportHTML(c, "p")}
@@ -4821,7 +4845,7 @@
       quota = `<p><strong>Can I deploy it?</strong> Your project's Agent Platform serving quota ("Custom model serving … per region") for ${esc(q.project)} in ${esc(q.region)}, from the Cloud Quotas API${day ? `, read ${esc(day)}` : ""}. Ready: the quota covers the fleet. Benchmark only: it covers one replica. The quota is a limit, not what's free (running endpoints count against it); a fleet on GKE uses Compute Engine GPU quota instead.</p>`;
     }
     return `<details class="hw-about"><summary>About these numbers</summary>
-      <p><strong>Fleet and cost</strong> assume your traffic, routing and redundancy settings. Monthly cost is the full bill for ${tot} input tokens (overflow included) at the pricing named under each figure; $/M is at Agent Platform + reservation, 3-yr. Prices are per chip-hour from the Cloud Billing Catalog.</p>
+      <p><strong>Fleet and cost</strong> assume your traffic, routing and redundancy settings. Fleet, $/M and monthly cost (the full bill for ${tot} input tokens, overflow included) are at the pricing named under each figure: the rail's Fleet pricing, or each option's cheapest when it's on auto. Expand a row for every pricing option; the cheapest fleet can differ between them. Prices are per chip-hour from the Cloud Billing Catalog.</p>
       ${quota}${availabilityHTML(plan && plan.availability)}</details>`;
   }
   function renderHwDrawer() {
@@ -4839,7 +4863,7 @@
       return `<tr><th>Accelerator</th><th class="n">${th("fleet", "Fleet")}</th><th class="n">${th(costCol[0], costCol[1])}</th><th>${th("deploy", "Can I deploy it?")}<span class="th-sub">in ${esc(collectCfg().region)}</span></th><th class="n">${th("tps", "Throughput per chip")}${!S.hw || (S.hw.plan && (S.hw.plan.candidates || []).some((c) => needsCaution(c.throughput_source || "estimated"))) ? `<span class="th-sub">${cautionHTML("Estimates")}</span>` : ""}</th><th><span class="visually-hidden">Action</span></th></tr>`;
     };
     const costVal = (x) => (monthlyView ? fmtUSD(x.monthly) : perM(x.usd));
-    const costSub = (x) => (monthlyView ? (x.monthlyTier ? TIER_SHORT[x.monthlyTier] || x.monthlyTier : "") : "Reserved 3y");
+    const costSub = (x) => (x.monthlyTier ? TIER_SHORT[x.monthlyTier] || x.monthlyTier : "");
     if (S.hwLoading || !S.hw) {
       html += `<p class="drawer-note" role="status">Sizing the model weights and ranking accelerators. This takes a few seconds…</p><div class="table-wrap"><table class="tbl cmp hw-tbl"><thead>${head(false)}</thead><tbody>${skeletonRows(6, 6)}</tbody></table></div>`;
       body.innerHTML = html;
@@ -4892,7 +4916,7 @@
           <div class="hero"><span class="hero-v">${costVal(row)}</span><span class="hero-u">${monthlyView ? "a month" : "per M input"}</span><span class="hero-fleet">${fleet != null ? fleet : "—"} chips</span></div>
           <p class="hero-sub">${monthlyView ? `${perM(row.usd)} per M input` : `${fmtUSD(row.monthly)} a month`}${costSub(row) ? ` · ${esc(costSub(row))}` : ""}</p>
           <div class="hw-lines"><div>${deployPill(st, true)}</div><div>${tagHTML(t.src, t.basis, t.note)} <span class="sub-inline">${fmtInt(t.tps)} tok/s per chip</span></div>${precSupportHTML(c, "div")}</div>
-          <details class="hw-more"><summary>Prices, quota and shape</summary>${hwDetailsHTML(row, st)}</details>
+          <details class="hw-more"><summary>${monthlyView ? "Monthly cost" : "Prices"}, quota and shape</summary>${hwDetailsHTML(row, st)}</details>
           <div class="card-foot">${sel ? '<span class="sel-tag">Selected</span>' : `<button type="button" class="btn btn-sm" data-select-hw="${esc(hwKey(c))}" data-needs-idle>Select</button>`}</div></article>`;
       }).join("")}</div>` + hwAboutHTML(plan);
       body.innerHTML = html;
