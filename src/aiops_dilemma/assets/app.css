@@ -1224,3 +1224,19 @@ td .dstat + .sub, .hw-lines .dstat + .sub { display: block; font-size: var(--t-1
 .hw-about .hw-avail { margin-top: 8px; }
 .hw-details .kv dt.cur, .hw-details .kv dd.cur { color: var(--teal-ink); font-weight: 700; }
 .hw-details .kv .sub-inline { color: var(--muted); font-weight: 500; }
+
+/* ---- Serving container (custom image, tuned config import) */
+textarea.mono, input.mono { font-family: var(--mono); font-size: 12px; }
+#f-extraArgs, #f-command, #f-env { width: 100%; white-space: pre; overflow-x: auto; }
+.sub-details { margin: 4px 0 10px; }
+.sub-details > summary { cursor: pointer; color: var(--muted); font-size: var(--t-14); padding: 6px 0; width: max-content; }
+.sub-details[open] > summary { color: var(--ink); }
+.tuned-card h4, .tuned-preview h4 { margin: 0 0 4px; font-size: var(--t-14); }
+.tuned-card p, .tuned-preview p { margin: 0 0 4px; }
+.tuned-preview { border: 1px solid var(--line); border-radius: var(--r); padding: 10px; margin: 0 0 10px; font-size: var(--t-12); }
+.tuned-preview ul { margin: 4px 0 8px; padding-left: 18px; }
+.tuned-preview .warn-list li { color: var(--ink); }
+.tuned-preview .btn-row { display: flex; gap: 8px; margin-top: 6px; }
+.patch-row { font-size: var(--t-12); margin: 6px 0 4px; }
+.patch-row pre { max-height: 240px; overflow: auto; background: var(--fog); padding: 8px; border-radius: var(--r); font-size: 11px; }
+.warn-ink { color: var(--warn-ink); }

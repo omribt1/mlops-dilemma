@@ -234,7 +234,10 @@ or the workload's defaults), or **synthetic ones shaped like your workload**:
 - 1,600 prompts by default: enough for 4 levels × 300 requests without reusing a prompt.
 
 **Deployment.** One replica on a dedicated Agent Platform endpoint, from Model Garden's verified serving recipe for
-the model and machine (or the pinned serving image), on the planned GPU and count.
+the model and machine (or the pinned serving image), on the planned GPU and count. A custom serving container
+(`serving.py`; README, "Custom serving containers and tuned configs") replaces the image, command, arguments,
+environment, routes or shared memory; with `args_mode: append` a flag you give replaces the recipe's copy, with
+`replace` your list is used as-is. Throughput measured this way belongs to that serving setup, and the report says so.
 
 **Pre-flight check.** Before measuring, one streamed request is forced to generate for 45–90 s (half the latency
 budget; `min_tokens` + `ignore_eos`), and one long prompt is sent (~100K tokens when your workload has prompts over

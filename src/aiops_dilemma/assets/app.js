@@ -2105,9 +2105,12 @@
 
   // ---- serving image (contract: deployment.image; null = the Model Garden verified recipe's image)
   // Artifact Registry (<region>-docker.pkg.dev/<project>/<repo>/<image>) or Container Registry ([xx.]gcr.io/<project>/<image>),
-  // with an optional :tag or @sha256 digest.
+  // with an optional :tag or @sha256 digest; or Docker Hub as docker.io/<namespace>/<image> (serving.valid_image_ref:
+  // pulled through an Artifact Registry remote repository at deploy time).
   const IMAGE_RE = /^(?:[a-z0-9-]+-docker\.pkg\.dev\/[a-z0-9][a-z0-9.:-]*(?:\/[a-z0-9][a-z0-9._-]*){2,}|(?:[a-z]+\.)?gcr\.io\/[a-z0-9][a-z0-9.:-]*(?:\/[a-z0-9][a-z0-9._-]*)+)(?::[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}|@sha256:[a-f0-9]{64})?$/;
-  const validImage = (v) => IMAGE_RE.test(String(v || "").trim());
+  const DOCKERHUB_RE = /^docker\.io\/(?:[a-z0-9]+(?:[._-][a-z0-9]+)*\/)?[a-z0-9]+(?:[._-][a-z0-9]+)*(?::[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}|@sha256:[a-f0-9]{64})?$/;
+  const isDockerHub = (v) => DOCKERHUB_RE.test(String(v || "").trim());
+  const validImage = (v) => IMAGE_RE.test(String(v || "").trim()) || isDockerHub(v);
   // "pytorch-vllm-serve:gemma4 (sha256:3fbc0e08…)" for a digest pin with a catalog tag (same as loadtest.short_image).
   function shortImage(img) {
     const name = String(img || "").split("/").pop();
@@ -2162,7 +2165,10 @@
   }
   function servingText(sv) {
     const flags = (sv.args || []).filter((a) => /^--/.test(a) && !/^--(host|port)\b/.test(a));
-    return `Measured with <code>${esc(shortImage(sv.image))}</code>` +
+    const extra = [sv.command && sv.command.length ? `command <code>${esc(sv.command.join(" "))}</code>` : "",
+      sv.env && Object.keys(sv.env).length ? `env ${Object.keys(sv.env).sort().map((k) => `<code>${esc(k)}</code>`).join(", ")}` : "",
+      sv.patch ? `a Python patch (${esc(sv.patch.bytes)} bytes)` : ""].filter(Boolean).map((x) => `, ${x}`).join("");
+    return (sv.tuned ? `Measured with the tuned config "${esc(sv.tuned.title || "untitled")}" on <code>${esc(shortImage(sv.image_requested || sv.image))}</code>` : `Measured with <code>${esc(shortImage(sv.image_requested || sv.image))}</code>`) + extra +
       (flags.length ? `, vLLM args <code>${esc(flags.join(" "))}</code>` : "") +
       (sv.inference_timeout_s ? `, endpoint inference timeout ${esc(sv.inference_timeout_s)} s` : "") + ".";
   }
@@ -2175,10 +2181,15 @@
   function renderBenchServing() {
     if (!S.cfg) return;
     const img = S.cfg.deployment.image || null, ch = imageChoice(img);
-    const what = ch === "verified" ? "the Model Garden verified recipe" :
+    const dd = S.cfg.deployment, tn = dd.tuned;
+    const what = tn ? `the tuned config "${esc(tn.title || "untitled")}" on <code>${esc(shortImage(img || "the recipe's image"))}</code>` :
+      customServing(dd) ? `a custom container${img ? ` <code>${esc(shortImage(img))}</code>` : " on the recipe's image"}` :
+      ch === "verified" ? "the Model Garden verified recipe" :
       ch === "pinned" ? `the pinned image <code>${esc(shortImage(img))}</code> (${esc(pinnedTested())})` : `a custom image <code>${esc(shortImage(img))}</code>`;
     const pre = S.cfg.loadtest.preflight !== false ? "A pre-flight check (about two minutes) runs before the sweep." : "The pre-flight check is off.";
     let html = `Serving image: ${what}. ${pre} <button type="button" class="link-btn" id="btnEditImage">Change</button>`;
+    const cw = contextWarning(S.cfg);
+    if (cw) html += `<br><span class="warn-ink">${icon("i-info", "ico-sm")} ${esc(cw)}</span>`;
     html += `<br><span id="benchPrompts">Prompts: ${esc(promptSourceText())}.</span> <button type="button" class="link-btn" id="btnEditPrompts">Change</button>`;
     const sv = measuredServing();
     if (sv) html += `<br>Last run: ${servingText(sv)}`;
@@ -2189,6 +2200,154 @@
     $("benchServing").innerHTML = html;
     $("benchServing").title = img || "";
   }
+  // ---- custom serving container (contract: serving.py; deployment.command / args_mode / env / routes /
+  // shared_memory_mb / pass_hf_token / sitecustomize / tuned)
+  const parseLines = (v) => String(v || "").split("\n").map((x) => x.trim()).filter(Boolean);
+  const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/;
+  const SECRET_ENV = ["HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_HUB_TOKEN"];
+  function parseEnv(text) {
+    const env = {};
+    for (const line of parseLines(text)) {
+      const i = line.indexOf("=");
+      if (i < 1) return { env, error: `"${line.slice(0, 40)}" isn't NAME=value.` };
+      const k = line.slice(0, i).trim(), v = line.slice(i + 1);
+      if (!ENV_KEY_RE.test(k)) return { env, error: `"${k.slice(0, 40)}" isn't a valid variable name.` };
+      if (/^AIP_/i.test(k)) return { env, error: `${k} is reserved by Agent Platform.` };
+      if (SECRET_ENV.indexOf(k.toUpperCase()) >= 0) return { env, error: `Don't put ${k} here: use "Give the endpoint my Hugging Face token".` };
+      if (k === "DILEMMA_PATCH_B64") return { env, error: `${k} is set from the patch.` };
+      env[k] = v;
+    }
+    return { env, error: "" };
+  }
+  function setFieldError(id, fieldId, msg) {
+    const e = $(id);
+    e.textContent = msg || "";
+    e.hidden = !msg;
+    if (msg) $(fieldId).setAttribute("aria-invalid", "true"); else $(fieldId).removeAttribute("aria-invalid");
+  }
+  function customServing(d) {
+    d = d || (S.cfg && S.cfg.deployment) || {};
+    return !!((d.command && d.command.length) || d.args_mode === "replace" || (d.env && Object.keys(d.env).length) ||
+      d.routes || d.sitecustomize || d.tuned);
+  }
+  function renderServingFields() {
+    if (!S.cfg) return;
+    const d = S.cfg.deployment, replace = d.args_mode === "replace";
+    const keep = (id, v) => { if (document.activeElement !== $(id)) $(id).value = v; };
+    $("f-argsMode").value = replace ? "replace" : "append";
+    keep("f-extraArgs", (d.extra_args || []).join("\n"));
+    $("f-extraArgs").placeholder = replace ? "google/gemma-4-26B-A4B-it\n--max-model-len=262144\n--max-num-seqs=256" : "--max-num-seqs=256";
+    keep("f-command", (d.command || []).join("\n"));
+    keep("f-env", Object.entries(d.env || {}).map(([k, v]) => `${k}=${v}`).join("\n"));
+    const r = d.routes || {};
+    keep("f-routePredict", r.predict || "");
+    keep("f-routeHealth", r.health || "");
+    keep("f-routePort", r.port || "");
+    $("f-routePredict").placeholder = replace ? "/v1/chat/completions" : "The recipe's";
+    $("f-routeHealth").placeholder = replace ? "/health" : "The recipe's";
+    keep("f-shm", d.shared_memory_mb ? +(d.shared_memory_mb / 1024).toFixed(1) : "");
+    $("f-hfToken").checked = !!d.pass_hf_token;
+    $("f-hfToken").disabled = !!S.cloudMode;
+    $("hfTokenHint").textContent = S.cloudMode
+      ? "Turned off on this shared deployment: gated Hugging Face weights won't load in a custom container."
+      : "For gated weights downloaded from Hugging Face. The token is set as an environment variable on the benchmark model, which anyone with read access to Agent Platform models in this project can see until the run tears it down.";
+    if (customServing(d) && !$("containerMore").open && ((d.command && d.command.length) || (d.env && Object.keys(d.env).length) || d.routes || d.sitecustomize)) $("containerMore").open = true;
+    renderTunedCard();
+    renderPatchRow();
+  }
+  // serving.needed_context / context_warning: explicit --max-model-len below the longest prompts' need.
+  function neededContext(r) {
+    const out = Math.floor((+r.avg_output_tokens || 0) * 2 + (+r.thinking_share || 0) * (+r.avg_thinking_tokens || 0) * 1.5) + 512;
+    if ((+r.pct_over_128k || 0) > 0) return Math.floor(Math.max(128500, (+r.large_mean || 188000) * 1.25)) + out;
+    if ((+r.pct_over_32k || 0) > 0) return 128000 + out;
+    return 32000 + out;
+  }
+  function contextWarning(cfg) {
+    const args = (cfg && cfg.deployment && cfg.deployment.extra_args) || [];
+    const a = args.find((x) => /^--max-model-len=/.test(x));
+    const i = args.indexOf("--max-model-len");
+    const mml = parseInt(a ? a.split("=")[1] : i >= 0 ? args[i + 1] : "", 10);
+    if (!(mml > 0)) return "";
+    const need = neededContext(cfg.requests || {});
+    return mml < need ? `--max-model-len is ${mml.toLocaleString("en-US")}, below the ~${need.toLocaleString("en-US")} tokens this workload's longest prompts need: those requests will fail.` : "";
+  }
+  function renderTunedCard() {
+    const t = S.cfg && S.cfg.deployment.tuned, box = $("tunedCard");
+    box.hidden = !t;
+    if (!t) { box.innerHTML = ""; return; }
+    box.innerHTML = `<h4>Tuned config: ${esc(t.title || "untitled")}</h4>` +
+      (t.hypothesis ? `<p>${esc(t.hypothesis)}</p>` : "") +
+      `<p class="muted">Imported${t.file ? ` from ${esc(t.file)}` : ""}${t.imported_at ? ` on ${esc(t.imported_at)}` : ""}${t.category ? ` · ${esc(t.category)}` : ""}. Benchmark it to measure it on your traffic.</p>` +
+      `<div class="notice-actions"><button type="button" class="link-btn" id="btnClearTuned">Back to the verified recipe</button></div>`;
+    $("btnClearTuned").onclick = clearCustomServing;
+  }
+  function renderPatchRow() {
+    const d = S.cfg && S.cfg.deployment, row = $("patchRow");
+    const code = d && d.sitecustomize;
+    row.hidden = !code;
+    if (!code) { row.innerHTML = ""; return; }
+    const lines = code.split("\n").length, moe = /_DL_MOE_TUNED_CONFIG/.test(code), kernel = /# ---- custom kernel code/.test(code);
+    const what = [moe ? "a MoE tile schedule" : "", kernel ? "custom kernel code" : ""].filter(Boolean).join(" and ") || "Python code";
+    const noCmd = !(d.command && d.command.length);
+    row.innerHTML = `<strong>Python patch:</strong> ${esc(what)}, ${lines} lines, run when the server starts.` +
+      (noCmd ? ` <span class="warn-ink">Needs a container command: the patch wraps it.</span>` : "") +
+      ` <button type="button" class="link-btn" id="btnViewPatch" aria-expanded="false">View</button> <button type="button" class="link-btn" id="btnRemovePatch">Remove</button><pre id="patchCode" hidden></pre>`;
+    $("btnViewPatch").onclick = () => {
+      const pre = $("patchCode"), open = pre.hidden;
+      if (open) pre.textContent = code;
+      pre.hidden = !open;
+      $("btnViewPatch").setAttribute("aria-expanded", String(open));
+      $("btnViewPatch").textContent = open ? "Hide" : "View";
+    };
+    $("btnRemovePatch").onclick = () => { S.cfg.deployment.sitecustomize = null; renderPatchRow(); markDirty(); };
+  }
+  function clearCustomServing() {
+    const d = S.cfg.deployment;
+    Object.assign(d, { image: null, command: null, args_mode: "append", extra_args: [], env: {}, routes: null,
+                       shared_memory_mb: null, pass_hf_token: false, sitecustomize: null, tuned: null });
+    S.imageChoice = null;
+    $("tunedPreview").hidden = true;
+    renderImageField();
+    renderServingFields();
+    renderBenchServing();
+    markDirty();
+    toast("Back to the Model Garden verified recipe.");
+  }
+  async function importTuned(file) {
+    const box = $("tunedPreview");
+    if (file.size > 1024 * 1024) { toast("That file is larger than 1 MB.", true); return; }
+    let res;
+    try {
+      const text = await file.text();
+      res = await postJSON(`/api/sessions/${enc(S.name)}/serving/import`, { text, filename: file.name, config: collectCfg() });
+    } catch (e) { toast(`Couldn't import ${file.name}: ${e.message}`, true); return; }
+    const sm = res.summary || {}, d = res.deployment;
+    const parts = [`${sm.args} vLLM arguments (instead of the recipe's)`, `command <code>${esc((d.command || []).join(" "))}</code>`,
+      sm.env && sm.env.length ? `environment ${sm.env.map((k) => `<code>${esc(k)}</code>`).join(", ")}` : "",
+      sm.moe_tile_sizes ? `a MoE tile schedule for ${sm.moe_tile_sizes} batch sizes` : "",
+      sm.kernel_lines ? `${sm.kernel_lines} lines of custom kernel code` : "",
+      d.pass_hf_token ? "your Hugging Face token for the weights" : ""].filter(Boolean);
+    box.innerHTML = `<h4>${esc(sm.title || file.name)}</h4>` + (sm.hypothesis ? `<p>${esc(sm.hypothesis)}</p>` : "") +
+      `<p>Image <code>${esc(sm.image)}</code>, with:</p><ul>${parts.map((x) => `<li>${x}</li>`).join("")}</ul>` +
+      (res.warnings && res.warnings.length ? `<div class="notice warn">${res.warnings.map((w) => `<p>${icon("i-info", "ico-sm")} ${esc(w)}</p>`).join("")}</div>` : "") +
+      `<p class="muted">Your hardware, model and the rest of the workload stay as they are.</p>` +
+      `<div class="btn-row"><button type="button" class="btn btn-sm btn-primary" id="btnApplyTuned">Apply</button><button type="button" class="btn btn-sm" id="btnCancelTuned">Cancel</button></div>`;
+    box.hidden = false;
+    $("btnApplyTuned").onclick = () => {
+      Object.assign(S.cfg.deployment, d);
+      S.imageChoice = { name: S.name, v: imageChoice(d.image) };
+      box.hidden = true;
+      renderImageField();
+      renderServingFields();
+      renderBenchServing();
+      markDirty();
+      toast(`Applied "${sm.title || file.name}". Save, then run a benchmark to measure it.`);
+      $("tunedCard").focus && $("btnClearTuned") && $("btnClearTuned").focus();
+    };
+    $("btnCancelTuned").onclick = () => { box.hidden = true; $("btnImportTuned").focus(); };
+    $("btnApplyTuned").focus();
+  }
+
   function editServingImage() {
     const sel = $("f-image"), det = sel.closest("details");
     if (getComputedStyle($("btnEditWorkload")).display !== "none" && !$("rail").classList.contains("open")) openRail();
@@ -2795,7 +2954,7 @@
     $("f-sysPrompts").value = (c.prompts.custom_system_prompts || []).join("\n---\n");
     renderMyPrompts();
     $("f-conc").value = (c.loadtest.concurrency || []).join(", ");
-    $("f-extraArgs").value = (c.deployment.extra_args || []).join(", ");
+    renderServingFields();
     $("f-preflight").checked = c.loadtest.preflight !== false;
     renderImageField();
     const st = S.session && S.session.throughput;
@@ -3116,7 +3275,34 @@
       const l = parseList(el.value, true);
       if (l.length) S.cfg.loadtest.concurrency = l;
     } else if (el.id === "f-extraArgs") {
-      S.cfg.deployment.extra_args = parseList(el.value, false);
+      S.cfg.deployment.extra_args = parseLines(el.value);
+      renderBenchServing();
+    } else if (el.id === "f-argsMode") {
+      S.cfg.deployment.args_mode = el.value === "replace" ? "replace" : "append";
+      renderServingFields();
+      renderBenchServing();
+    } else if (el.id === "f-command") {
+      const c = parseLines(el.value);
+      S.cfg.deployment.command = c.length ? c : null;
+      renderPatchRow();
+    } else if (el.id === "f-env") {
+      const r = parseEnv(el.value);
+      setFieldError("envError", "f-env", r.error);
+      if (r.error) return;
+      S.cfg.deployment.env = r.env;
+    } else if (el.id === "f-routePredict" || el.id === "f-routeHealth" || el.id === "f-routePort") {
+      const r = Object.assign({}, S.cfg.deployment.routes || {});
+      const key = { "f-routePredict": "predict", "f-routeHealth": "health", "f-routePort": "port" }[el.id];
+      const v = el.value.trim();
+      if (!v) delete r[key];
+      else if (key === "port") { const n = parseInt(v, 10); if (!(n >= 1 && n <= 65535)) return; r.port = n; }
+      else { if (!/^\/[A-Za-z0-9._~\/:-]{0,200}$/.test(v)) return; r[key] = v; }
+      S.cfg.deployment.routes = Object.keys(r).length ? r : null;
+    } else if (el.id === "f-shm") {
+      const gb = parseFloat(el.value);
+      S.cfg.deployment.shared_memory_mb = gb > 0 ? Math.max(1024, Math.min(1048576, Math.round(gb * 1024))) : null;
+    } else if (el.id === "f-hfToken") {
+      S.cfg.deployment.pass_hf_token = el.checked;
     } else if (el.id === "f-preflight") {
       S.cfg.loadtest.preflight = el.checked;
       renderBenchServing();
@@ -3168,7 +3354,7 @@
     if (S.cfg.prompts.source === "file") renderMyPrompts();   // repeats and answer lengths follow the settings
   }
   function imageErrorText() {
-    return "Use an Artifact Registry or Container Registry image, e.g. us-docker.pkg.dev/my-project/my-repo/vllm:tag or gcr.io/my-project/vllm:tag. Not saved yet.";
+    return "Use an Artifact Registry, Container Registry or Docker Hub image, e.g. us-docker.pkg.dev/my-project/my-repo/vllm:tag or docker.io/vllm/vllm-openai:v0.31.0. Not saved yet.";
   }
   function setMonthly(v) {
     const t = S.cfg.traffic;
@@ -5067,6 +5253,7 @@
     q.textContent = st.quota_project_differs ? `Your credentials bill API calls to ${st.quota_project} by default; the app uses ${appProj} for its calls.` : "";
     q.hidden = !st.quota_project_differs;
     const cl = st.cloud || null;   // shared Cloud Run deployment: fixed project, no sign-in, IAP user shown
+    if (S.cloudMode !== !!cl) { S.cloudMode = !!cl; if (S.cfg) renderServingFields(); }
     const canSignIn = st.sign_in_available !== false && !cl;
     $("btnSignIn").hidden = !!st.adc_ok || !canSignIn;
     $("btnSwitchAccount").hidden = !st.adc_ok || !canSignIn;
@@ -5450,6 +5637,8 @@
   function wire() {
     const form = $("railForm");
     form.addEventListener("input", onRailInput);
+    $("btnImportTuned").addEventListener("click", async () => { if (await ensureWritable()) $("tunedFile").click(); });
+    $("tunedFile").addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) importTuned(f); });
     $("btnGemAll").addEventListener("click", () => { S.gemAll = !S.gemAll; populateGeminiPlaceholders(); $("btnGemAll").focus(); });
     $("btnGemRefresh").addEventListener("click", refreshGemini);
     form.addEventListener("change", (e) => { if (e.target.tagName === "SELECT" || e.target.type === "radio" || e.target.type === "checkbox" || e.target.id === "f-monthly" || e.target.id === "f-imageCustom") onRailInput(e); });

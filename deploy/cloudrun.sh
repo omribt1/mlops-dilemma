@@ -151,6 +151,19 @@ done
 # roles/storage.objectAdmin on the sessions bucket only (not the project): read and write runs/ and cache/.
 run gcloud storage buckets add-iam-policy-binding "gs://$BUCKET" --member "serviceAccount:$SA_EMAIL" \
   --role roles/storage.objectAdmin --format none
+# Docker Hub serving images (custom serving containers, serving.py): Agent Platform runs images from Artifact Registry
+# only, so a remote repository (pull-through cache of Docker Hub) is created here once, and the runtime SA may read it
+# (roles/artifactregistry.reader on that repository only: a read through it caches the image). Benchmarks in other
+# regions need the same repository there.
+if exists gcloud artifacts repositories describe dilemma-dockerhub --location "$REGION" --project "$PROJECT"; then
+  echo "exists: dilemma-dockerhub"
+else
+  run gcloud artifacts repositories create dilemma-dockerhub --project "$PROJECT" --location "$REGION" \
+    --repository-format docker --mode remote-repository --remote-docker-repo DOCKER-HUB \
+    --description "Docker Hub pull-through cache for mlops-dilemma benchmark endpoints"
+fi
+run gcloud artifacts repositories add-iam-policy-binding dilemma-dockerhub --project "$PROJECT" --location "$REGION" \
+  --member "serviceAccount:$SA_EMAIL" --role roles/artifactregistry.reader --format none
 # roles/iam.serviceAccountUser (actAs) is only needed when an Agent Platform deploy runs the model as a custom
 # service account. This app's deploys don't set one (Agent Platform uses its own service agent), so it is
 # opt-in (--grant-act-as) and scoped to the runtime SA itself, never project-wide.

@@ -314,8 +314,8 @@ streams drop after about 30 s ("peer closed connection"), the server then fails 
 ("503 no healthy upstream"), even when the endpoint was created with a long inference timeout. A sweep against
 such an endpoint fails for every long request while you pay for the GPU.
 
-- **Choose the image** in the web app (Advanced → Endpoint → Serving image: the verified recipe, the pinned image,
-  or a custom Artifact Registry / Container Registry URI), or in the config:
+- **Choose the image** in the web app (Advanced → Serving container → Serving image: the verified recipe, the pinned
+  image, or a custom Artifact Registry, Container Registry or Docker Hub URI), or in the config:
   ```yaml
   deployment:
     image: us-docker.pkg.dev/vertex-ai/vertex-vision-model-garden-dockers/pytorch-vllm-serve:gemma4   # null = verified recipe
@@ -335,6 +335,60 @@ such an endpoint fails for every long request while you pay for the GPU.
   uv run dilemma preflight -c my.yaml        # the pre-flight check alone, against runs/<name>/endpoint.json
   uv run dilemma teardown -c my.yaml
   ```
+
+### Custom serving containers and tuned configs
+
+Bring your own serving setup and measure it on your traffic: your image, command, vLLM arguments, environment,
+routes, shared memory, and a Python patch that runs when the server starts (for example a tuned fused-MoE tile
+schedule or custom Triton kernels). In the web app: **Advanced → Serving container**. In the config, all optional:
+
+```yaml
+deployment:
+  image: docker.io/vllm/vllm-openai:v0.31.0   # or Artifact Registry / Container Registry
+  command: [vllm, serve]                      # empty = the image's entrypoint
+  args_mode: replace                          # append (default): extra_args merge into the recipe's arguments, and a
+                                              # flag given here replaces the recipe's; replace: the full argument list
+  extra_args:
+    - google/gemma-4-26B-A4B-it
+    - --max-model-len=262144
+    - --max-num-seqs=256
+    - '--speculative-config={"method":"ngram_gpu","num_speculative_tokens":2}'
+  env: {HF_HOME: /dev/shm/hf_cache}
+  routes: {predict: /v1/chat/completions, health: /health, port: 8080}   # replace mode defaults to these
+  shared_memory_mb: null                      # empty: 16 GB, or ~43% of the machine's memory when HF_HOME is in /dev/shm
+  pass_hf_token: true                         # gated weights from Hugging Face (not available on the Cloud Run deployment)
+  sitecustomize: null                         # Python run at server start; needs `command`
+```
+
+- **Docker Hub images.** Agent Platform only runs images from Artifact Registry. For a `docker.io/...` image the first
+  deploy creates an Artifact Registry remote repository, `dilemma-dockerhub`, in the endpoint's region (a pull-through
+  cache that deletes cached versions after 14 days), pulls the image's manifest through it, and deploys from there.
+  Without permission to create repositories, the error gives the one `gcloud` command to run.
+- **How the benchmark reaches it.** Agent Platform's chat-completions route only works for Model Garden containers
+  (a custom one answers 404 `UNIMPLEMENTED`). A container that serves vLLM's OpenAI API itself (`args_mode: replace`
+  or a `command`, predict route `/v1/chat/completions`) is load-tested through `:streamRawPredict`, which passes each
+  request to the predict route and streams the answer back, with the served model name (`--served-model-name`, else
+  the model ID) instead of `default`.
+- **Weights from Hugging Face.** With `args_mode: replace` and a Hugging Face model ID, vLLM downloads the weights.
+  The container disk holds about 50 GB, so larger checkpoints go to memory (`HF_HOME=/dev/shm/hf_cache`, shared memory
+  sized automatically). `pass_hf_token` sets your token as `HF_TOKEN` on the benchmark model: anyone who can read
+  Agent Platform models in the project can see it until the run deletes the model.
+- **Import a tuned config.** `alpha_inference` (Google Cloud AlphaEvolve tuning vLLM for a GPU, model and workload)
+  writes its winner as `best_candidate.py`. Import it with **Import tuned config…** in the app, or:
+  ```bash
+  uv run dilemma import-tuned -c my.yaml path/to/best_candidate.py [--image us-docker.pkg.dev/...] [--dry-run]
+  ```
+  The file is parsed, never run: `get_candidate_config()` must return a literal dict. Its `vllm_args` become the full
+  argument list, `env_vars` the environment, and `moe_tuned_config` plus `custom_kernel_code` a `sitecustomize`
+  patch (the same `register_vllm_patch` hook its kernels use). Speculative decoding (`--speculative-config`) is
+  left out: on vLLM 0.31 it fails under load together with structured JSON output ("grammar rejected tokens"); add it
+  back under vLLM arguments if your prompts don't use a JSON schema. The import warns when the tuned config serves another
+  model, precision or GPU count, includes kernel code, or caps `--max-model-len` below what your longest prompts
+  need. A config tuned on someone else's traffic says little about yours: tune on your own traffic, then benchmark
+  the result here to price it.
+- **Provenance.** `endpoint.json`, `measured.json` and the report record the command, environment (never the token),
+  routes, shared memory, the patch's size and sha256, and the tuned config's title. `dilemma reference-entry` warns
+  that such a run isn't a reference benchmark.
 
 ## Lessons this tool encodes
 
@@ -377,7 +431,9 @@ What it creates:
   - Browser: the project picker;
   - Monitoring Viewer: "Import from Cloud Monitoring";
   - Cloud Quotas Viewer: the GPU quotas in the hardware drawer;
-  - Storage Object Admin on the sessions bucket only.
+  - Storage Object Admin on the sessions bucket only;
+  - Artifact Registry Reader on `dilemma-dockerhub` only, a Docker Hub pull-through repository the script creates
+    in the service's region for custom serving images.
 
   Benchmarks deploy GPU endpoints *as this service account*, not as the person using the app. Pass `--grant-act-as` if your project needs `iam.serviceAccountUser` for Agent Platform deploys.
 - **A Cloud Storage bucket** `<project>-mlops-dilemma-sessions`, mounted at `/data` for sessions and caches.
@@ -476,6 +532,7 @@ src/aiops_dilemma/
   quotas.py     Agent Platform serving quotas per accelerator and region (Cloud Quotas API)
   hftoken.py    Hugging Face token (Settings: env > 0600 file, never in sessions)
   prompts.py    prompt sets       deploy.py   Agent Platform endpoint         loadtest.py  load generator
+  serving.py    custom serving container (image, command, args, env, routes, patch) + tuned-config import
   userprompts.py  your own prompts (parse, store, summary, answer-length defaults, file routing)
   analyze.py    peak throughput   costmodel.py fleet vs MaaS          report.py / dashboard.py
 examples/       workload definitions

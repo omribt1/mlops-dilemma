@@ -17,6 +17,7 @@
   dilemma auto     -c CONFIG [--keep]            plan -> prompts -> deploy -> load -> analyze -> report -> teardown
   dilemma run-job  -c CONFIG --steps ...         run benchmark steps as a durable job (what the web app launches)
   dilemma reference-entry -c CONFIG              print the catalog.REFERENCE_BENCHMARKS entry of a reference run
+  dilemma import-tuned -c CONFIG FILE [--image IMG]  import a tuned serving config (alpha_inference best_candidate.py)
 
 deploy, load, calibrate, teardown, auto and run-job record their progress in runs/<name>/job.json and
 job_events.jsonl, so the web app shows them live. SIGTERM or Ctrl-C cancels at the next safe point and tears down
@@ -208,6 +209,37 @@ def cmd_reference_entry(a, cfg, rd):
     print(json.dumps(entry, indent=4))
 
 
+def cmd_import_tuned(a, cfg, rd):
+    """Import a tuned serving config (alpha_inference best_candidate.py, or the same dict as JSON) into the workload
+    file's deployment block. The candidate is parsed, never run."""
+    from pathlib import Path
+
+    import yaml
+
+    from aiops_dilemma import paths, serving
+    path = Path(a.candidate)
+    res = serving.import_candidate(path.read_text(), cfg, filename=path.name, image=a.image, cloud=paths.cloud_mode())
+    s = res["summary"]
+    print(f"tuned config: {s['title'] or '(untitled)'} [{s['category'] or 'n/a'}]")
+    if s["hypothesis"]:
+        print(f"  {s['hypothesis']}")
+    print(f"  image {s['image']}, {s['args']} vLLM arguments (replace the recipe's), env {', '.join(s['env']) or 'none'}"
+          + (f", MoE tile schedule for {s['moe_tile_sizes']} batch sizes" if s["moe_tile_sizes"] else "")
+          + (f", {s['kernel_lines']} lines of kernel code" if s["kernel_lines"] else ""))
+    for w in res["warnings"]:
+        print(f"warning: {w}", file=sys.stderr)
+    raw = yaml.safe_load(Path(a.config).read_text()) or {}
+    raw["deployment"] = {**(raw.get("deployment") or {}), **res["deployment"]}
+    errs = serving.normalize(dict(raw["deployment"]), cloud=paths.cloud_mode())
+    if errs:
+        raise SystemExit("not imported: " + "; ".join(errs))
+    if a.dry_run:
+        print("dry run: workload file unchanged")
+        return
+    Path(a.config).write_text(yaml.safe_dump(raw, sort_keys=False, default_flow_style=False))
+    print(f"updated {a.config} (deployment). Benchmark it with `dilemma auto -c {a.config}`.")
+
+
 def cmd_auto(a, cfg, rd):
     from aiops_dilemma.jobs import AUTO_STEPS
     try:
@@ -232,7 +264,7 @@ def main(argv=None):
     p_ui.add_argument("--open", action="store_true", help="open browser automatically")
     p = sub.add_parser("init"); p.add_argument("--auto", action="store_true"); p.add_argument("-o", "--output", default="workload.yaml")
     for name in ("plan", "prompts", "deploy", "load", "analyze", "calibrate", "report", "estimate", "simulate", "teardown",
-                 "auto", "run-job", "preflight", "reference-entry"):
+                 "auto", "run-job", "preflight", "reference-entry", "import-tuned"):
         p = sub.add_parser(name)
         p.add_argument("-c", "--config", required=True)
         p.add_argument("--run-dir", default=None, help="session directory (default: derived from the config)")
@@ -264,6 +296,10 @@ def main(argv=None):
             p.add_argument("--scale", type=float, default=1.0, help="scale traffic (e.g. 0.1 for a quick run)")
             p.add_argument("--defer-deadline-h", type=float, default=24.0,
                            help="deferred scenario: each long prompt must finish within this many hours")
+        if name == "import-tuned":
+            p.add_argument("candidate", help="alpha_inference best_candidate.py (or cand_*.py), or the same dict as JSON")
+            p.add_argument("--image", default=None, help="serving image (default docker.io/vllm/vllm-openai:v0.31.0)")
+            p.add_argument("--dry-run", action="store_true", help="show what would change, don't write the file")
         if name == "preflight":
             p.add_argument("--no-wait", action="store_true", help="don't wait for the endpoint to answer first")
         if name in ("auto", "run-job"):

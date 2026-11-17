@@ -15,8 +15,11 @@ MAX_ERROR_RATE = 0.10
 
 
 def serving_provenance(state: dict) -> dict:
-    """Serving image, final container args and inference timeout as recorded in endpoint.json (deploy.py)."""
-    return {k: state[k] for k in ("image", "image_source", "args", "inference_timeout_s")
+    """Serving image, final container args and inference timeout as recorded in endpoint.json (deploy.py), plus a
+    custom container's command, environment, routes, shared memory, patch digest and tuned-config provenance."""
+    return {k: state[k] for k in ("image", "image_source", "args", "inference_timeout_s", "image_requested",
+                                  "command", "args_mode", "env", "routes", "shared_memory_mb", "patch", "tuned", "api", "served_model",
+                                  "hf_token_passed")
             if state.get(k) is not None}
 
 

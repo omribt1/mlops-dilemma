@@ -42,6 +42,7 @@ from aiops_dilemma import (
     recommender,
     regions,
     report,
+    serving,
     traffic,
     userprompts,
 )
@@ -681,6 +682,8 @@ def _reject_bad_region(cfg: dict) -> dict:
     instead of silently pricing and deploying in the default region."""
     if cfg.get("_region_warning"):
         raise HTTPException(status_code=400, detail=cfg["_region_warning"][0].upper() + cfg["_region_warning"][1:])
+    if cfg.get("_serving_errors"):   # custom serving container fields (serving.normalize)
+        raise HTTPException(status_code=400, detail="Serving container: " + "; ".join(cfg["_serving_errors"]))
     return cfg
 
 
@@ -1151,6 +1154,33 @@ def api_delete_prompts(name: str):
     userprompts.remove(rd)
     cfg = _set_prompt_source(clean, rd, "synthetic")
     return _prompts_response(clean, rd, cfg)
+
+
+@app.post("/api/sessions/{name}/serving/import")
+def api_import_tuned(name: str, payload: dict):
+    """Read a tuned serving config (alpha_inference best_candidate.py, or the same dict as JSON) and return the
+    deployment fields it maps to, a summary and warnings against this workload. Parsed, never run; nothing is saved
+    (the app applies the fields to the session and saves as usual)."""
+    clean_name = _sanitize_name(name)
+    text = payload.get("text")
+    if not isinstance(text, str) or not text.strip():
+        raise HTTPException(status_code=400, detail="No file content")
+    if len(text.encode()) > serving.MAX_CANDIDATE:
+        raise HTTPException(status_code=413, detail="The file is larger than 1 MB")
+    if payload.get("config"):
+        raw = dict(payload["config"])
+        raw["name"] = clean_name
+        cfg = config.normalize(raw)
+    else:
+        cfg = _session_Config(clean_name, _session_dir(clean_name))
+    image = payload.get("image") or None
+    if image is not None and not serving.valid_image_ref(str(image)):
+        raise HTTPException(status_code=400, detail="Not an Artifact Registry, Container Registry or Docker Hub image")
+    try:
+        return serving.import_candidate(text, cfg, filename=str(payload.get("filename") or "")[:200], image=image,
+                                        cloud=CLOUD)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Can't import this file: {e}")
 
 
 @app.post("/api/uploads/classify")

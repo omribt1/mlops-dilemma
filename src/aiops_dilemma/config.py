@@ -34,8 +34,17 @@ DEFAULTS = {
         "machine_type": None,
         "accelerator_type": None,
         "accelerator_count": None,
-        "extra_args": [],
+        "extra_args": [],               # vLLM arguments: merged into the recipe's (args_mode append) or the full list
+        "args_mode": "append",          # append | replace
         "image": None,                  # serving image; None = the Model Garden verified recipe's (catalog.SERVING_IMAGES)
+        # Custom serving container (serving.py): all optional
+        "command": None,                # container entrypoint, e.g. [vllm, serve]; None = the image's
+        "env": {},                      # extra environment variables
+        "routes": None,                 # {predict, health, port}; None = the recipe's (replace mode: vLLM's OpenAI routes)
+        "shared_memory_mb": None,       # /dev/shm size; None = 16 GB (or ~43% of RAM when HF_HOME is in /dev/shm)
+        "pass_hf_token": False,         # give the endpoint your Hugging Face token (gated weights from Hugging Face)
+        "sitecustomize": None,          # Python run at server start (MoE tile schedule, custom kernels); needs command
+        "tuned": None,                  # provenance of an imported tuned config (serving.import_candidate)
         "existing_endpoint": None,
         "dedicated_dns": None,
     },
@@ -265,6 +274,14 @@ def normalize(raw: dict, path: str | None = None) -> dict:
     else:
         cfg.pop("_region_warning", None)
     _mix_check(cfg)
+    from aiops_dilemma import paths, serving
+    dep = cfg.get("deployment") if isinstance(cfg.get("deployment"), dict) else {}
+    cfg["deployment"] = dep
+    errs = serving.normalize(dep, cloud=paths.cloud_mode())
+    if errs:
+        cfg["_serving_errors"] = errs
+    else:
+        cfg.pop("_serving_errors", None)
     maas = cfg.get("maas") if isinstance(cfg.get("maas"), dict) else {}
     rps = max(0.0, _num(maas.get("max_rps"), 0.0))   # null / missing = no MaaS overflow, never a crash
     maas["max_rps"] = int(rps) if rps == int(rps) else rps
@@ -366,6 +383,8 @@ def load(path: str) -> dict:
     for w in ("_region_warning", "_mix_warning"):
         if cfg.get(w):
             print(f"warning: {path}: {cfg[w]}", file=sys.stderr)
+    for e in cfg.get("_serving_errors") or []:
+        print(f"warning: {path}: {e} (a deploy will refuse until it's fixed)", file=sys.stderr)
     missing = []
     if not cfg.get("project"):
         missing.append("project")

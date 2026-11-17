@@ -62,6 +62,9 @@ if [[ "$ALL" == 1 ]]; then
     run gcloud projects remove-iam-policy-binding "$PROJECT" --member "serviceAccount:$SA_EMAIL" --role "$role" \
       --condition None --quiet --format none || true
   done
+  run gcloud artifacts repositories remove-iam-policy-binding dilemma-dockerhub --project "$PROJECT" \
+    --location "$REGION" --member "serviceAccount:$SA_EMAIL" --role roles/artifactregistry.reader --quiet \
+    --format none 2>/dev/null || true   # the Docker Hub cache itself is kept (local runs may use it)
   if exists gcloud iam service-accounts describe "$SA_EMAIL" --project "$PROJECT"; then
     run gcloud iam service-accounts delete "$SA_EMAIL" --project "$PROJECT" --quiet
   else

@@ -123,10 +123,21 @@ def serving_line(measured: dict | None) -> str | None:
     from aiops_dilemma.loadtest import short_image
     known = next((x for x in SERVING_IMAGES if x["image"] == sv["image"]), None)
     name = short_image(known) if known else str(sv["image"]).rsplit("/", 1)[-1]
-    return (f"Measured with `{name}`"
-            + (f", vLLM args `{' '.join(flags)}`" if flags else "")
-            + (f", endpoint inference timeout {sv['inference_timeout_s']} s" if sv.get("inference_timeout_s") else "")
-            + f" (image `{sv['image']}`).")
+    tuned = sv.get("tuned") or {}
+    extra = []
+    if sv.get("command"):
+        extra.append(f"command `{' '.join(sv['command'])}`")
+    if sv.get("env"):
+        extra.append("env " + ", ".join(f"`{k}`" for k in sorted(sv["env"])))
+    if sv.get("patch"):
+        extra.append(f"a Python patch ({sv['patch'].get('bytes', 0):,} bytes, sha256 {str(sv['patch'].get('sha256'))[:12]})")
+    return (("Measured with the tuned config "
+             f"\"{tuned.get('title') or 'untitled'}\" ({tuned.get('source', 'imported')}), served by `{name}`")
+            if tuned else f"Measured with `{name}`") \
+        + (f", vLLM args `{' '.join(flags)}`" if flags else "") \
+        + "".join(f", {x}" for x in extra) \
+        + (f", endpoint inference timeout {sv['inference_timeout_s']} s" if sv.get("inference_timeout_s") else "") \
+        + f" (image `{sv.get('image_requested') or sv['image']}`)."
 
 
 def preflight_line(measured: dict | None) -> str | None:

@@ -39,7 +39,7 @@ class Auth:
 
 
 async def _one(client, url, auth, prompt, default_kwargs) -> dict:
-    body = {"model": "default", "messages": prompt["messages"], "max_tokens": prompt.get("max_tokens", 1024),
+    body = {"model": _model(url), "messages": prompt["messages"], "max_tokens": prompt.get("max_tokens", 1024),
             "temperature": 0.2, "stream": True, "stream_options": {"include_usage": True},
             "skip_special_tokens": False}
     if prompt.get("response_format"):
@@ -62,6 +62,10 @@ async def _one(client, url, auth, prompt, default_kwargs) -> dict:
                 if not line.startswith("data: ") or line == "data: [DONE]":
                     continue
                 chunk = json.loads(line[6:])
+                if chunk.get("error"):   # the server ended the request mid-stream (e.g. vLLM's internal error event)
+                    e = chunk["error"]
+                    rec["error"] = "server error mid-stream: " + str(e.get("message") if isinstance(e, dict) else e)[:240]
+                    continue
                 usage = chunk.get("usage") or usage
                 for ch in chunk.get("choices", []):
                     d = ch.get("delta", {})
@@ -102,7 +106,7 @@ def wait_ready(url: str, timeout_s: float = READY_TIMEOUT_S, poll_s: float = REA
     completes, while the model server loads and the route comes up. Raises SystemExit with the last error if it
     never becomes ready (the caller tears the endpoint down)."""
     auth, t0, last = Auth(), time.time(), ""
-    body = {"model": "default", "messages": [{"role": "user", "content": "Reply with OK."}], "max_tokens": 4}
+    body = {"model": _model(url), "messages": [{"role": "user", "content": "Reply with OK."}], "max_tokens": 4}
     while True:
         try:
             r = httpx.post(url, json=body, timeout=120,
@@ -221,6 +225,10 @@ def _preflight_stream(url: str, headers: dict, body: dict, timeout_s: float) -> 
                     chunk = json.loads(line[6:])
                 except ValueError:
                     continue
+                if chunk.get("error"):
+                    e = chunk["error"]
+                    out["error"] = "server error mid-stream: " + str(e.get("message") if isinstance(e, dict) else e)[:240]
+                    continue
                 usage = chunk.get("usage") or usage
                 for ch in chunk.get("choices", []):
                     d = ch.get("delta", {})
@@ -303,7 +311,7 @@ def preflight(url: str, cfg: dict, run_dir: Path | None = None, progress_cb: Cal
 
     # (a) long streamed output
     def long_output_body(n: int) -> dict:
-        return {"model": "default", "stream": True, "stream_options": {"include_usage": True},
+        return {"model": _model(url), "stream": True, "stream_options": {"include_usage": True},
                 "messages": [{"role": "user", "content": "Count upward from 1, one number per line. Do not stop."}],
                 "max_tokens": n, "min_tokens": n, "ignore_eos": True, "temperature": 0.0}
     r = call("long_output", long_output_body(out_tokens), target * 3 + 60)
@@ -332,7 +340,7 @@ def preflight(url: str, cfg: dict, run_dir: Path | None = None, progress_cb: Cal
 
     # (b) long prompt, short output
     if prompt_tokens:
-        body = {"model": "default", "stream": True, "stream_options": {"include_usage": True}, "max_tokens": 16,
+        body = {"model": _model(url), "stream": True, "stream_options": {"include_usage": True}, "max_tokens": 16,
                 "temperature": 0.0,
                 "messages": [{"role": "user", "content": _filler(int(prompt_tokens * 0.9))
                               + "\n\nReply with the single word OK."}]}
@@ -380,8 +388,26 @@ def preflight_advice(image: str | None, image_txt: str) -> str:
             "the benchmark settings (or set deployment.image) and rerun.")
 
 
+# Served model name per endpoint URL (endpoint_url records it): Model Garden containers accept "default", an upstream
+# vLLM container only its --served-model-name (or the model ID).
+_SERVED_MODEL: dict[str, str] = {}
+
+
+def _model(url: str) -> str:
+    return _SERVED_MODEL.get(url, "default")
+
+
 def endpoint_url(state: dict) -> str:
-    return f"https://{state['dedicated_dns']}/v1beta1/{state['endpoint']}/chat/completions"
+    """The OpenAI chat-completions URL of the endpoint in endpoint.json. Model Garden containers get Agent Platform's
+    chat-completions route; a custom container (state["api"] == "raw", deploy.py) gets :streamRawPredict, which passes
+    the body to the container's predict route (/v1/chat/completions) and streams the answer back."""
+    if state.get("api") == "raw":
+        url = f"https://{state['dedicated_dns']}/v1/{state['endpoint']}:streamRawPredict"
+    else:
+        url = f"https://{state['dedicated_dns']}/v1beta1/{state['endpoint']}/chat/completions"
+    if state.get("served_model"):
+        _SERVED_MODEL[url] = state["served_model"]
+    return url
 
 
 def preflight_enabled(cfg: dict) -> bool:
@@ -538,7 +564,9 @@ def _error_breakdown(records: list[dict]) -> dict:
         err = str(r.get("error") or "")
         kind = ("503 no healthy upstream" if "no healthy upstream" in err else
                 "connection cut mid-stream" if "peer closed" in err or "RemoteProtocolError" in err else
-                "timeout" if "Timeout" in err else f"status {r.get('status')}")
+                "timeout" if "Timeout" in err else
+                "server error mid-stream" if err.startswith("server error mid-stream") else
+                "stream ended without an answer" if r.get("status") == 200 else f"status {r.get('status')}")
         out[kind] = out.get(kind, 0) + 1
     return out
 

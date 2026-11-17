@@ -496,10 +496,7 @@
             <label for="f-dns">Dedicated DNS</label>
             <input type="text" id="f-dns" data-path="deployment.dedicated_dns" data-kind="strnull" spellcheck="false">
           </div>
-          <div class="field">
-            <label for="f-extraArgs">Extra vLLM arguments</label>
-            <input type="text" id="f-extraArgs" spellcheck="false" placeholder="--max-num-seqs=256, …">
-          </div>
+          <h3 class="sub-h">Serving container</h3>
           <div class="field">
             <label for="f-image">Serving image</label>
             <select id="f-image" aria-describedby="imageHint">
@@ -510,10 +507,64 @@
           </div>
           <div class="field" id="imageCustomField" hidden>
             <label for="f-imageCustom">Image URI</label>
-            <input type="text" id="f-imageCustom" spellcheck="false" autocomplete="off" inputmode="url" placeholder="us-docker.pkg.dev/project/repo/image:tag" aria-describedby="imageError imageHint">
+            <input type="text" id="f-imageCustom" spellcheck="false" autocomplete="off" inputmode="url" placeholder="us-docker.pkg.dev/project/repo/image:tag or docker.io/vllm/vllm-openai:v0.31.0" aria-describedby="imageError imageHint">
           </div>
           <p class="field-error" id="imageError" role="alert" hidden></p>
           <p class="hint" id="imageHint">The verified recipe's image changes over time, and some versions cut long requests. The pinned image is one this tool has run long requests on. Either way, the pre-flight check catches a bad image before you pay for a full run.</p>
+          <div class="notice tuned-card" id="tunedCard" hidden></div>
+          <div class="field">
+            <button type="button" class="btn btn-sm" id="btnImportTuned" aria-describedby="importTunedHint">Import tuned config…</button>
+            <input type="file" id="tunedFile" class="visually-hidden" accept=".py,.json,text/x-python,application/json" tabindex="-1" aria-hidden="true">
+            <p class="hint" id="importTunedHint">A tuned serving config from alpha_inference (<code>best_candidate.py</code>) fills in the image, command, vLLM arguments, environment and patch below. The file is read, never run.</p>
+          </div>
+          <div class="tuned-preview" id="tunedPreview" hidden></div>
+          <div class="field">
+            <label for="f-argsMode">vLLM arguments</label>
+            <select id="f-argsMode" aria-describedby="argsModeHint">
+              <option value="append">Add to the recipe's arguments</option>
+              <option value="replace">Use exactly these arguments</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="f-extraArgs" class="visually-hidden">vLLM arguments, one per line</label>
+            <textarea id="f-extraArgs" rows="4" spellcheck="false" autocomplete="off" class="mono" placeholder="--max-num-seqs=256" aria-describedby="argsModeHint"></textarea>
+            <p class="hint" id="argsModeHint">One argument per line; JSON values stay on their line. Added to the recipe's, a flag here replaces the recipe's copy of it. "Use exactly these" is the full list, model ID first, as for <code>vllm serve</code>.</p>
+          </div>
+          <details class="sub-details" id="containerMore">
+            <summary>Command, environment, routes and memory</summary>
+            <div class="field">
+              <label for="f-command">Container command</label>
+              <textarea id="f-command" rows="2" spellcheck="false" autocomplete="off" class="mono" placeholder="The image's own entrypoint" aria-describedby="commandHint"></textarea>
+              <p class="hint" id="commandHint">One part per line, e.g. <code>vllm</code> then <code>serve</code> for the upstream vLLM image. The arguments above follow it.</p>
+            </div>
+            <div class="field">
+              <label for="f-env">Environment variables</label>
+              <textarea id="f-env" rows="3" spellcheck="false" autocomplete="off" class="mono" placeholder="VLLM_USE_V2_MODEL_RUNNER=1" aria-describedby="envHint envError"></textarea>
+              <p class="field-error" id="envError" role="alert" hidden></p>
+              <p class="hint" id="envHint">One <code>NAME=value</code> per line. Don't put tokens here: use the Hugging Face option below.</p>
+            </div>
+            <div class="field row">
+              <label for="f-routePredict">Predict route</label>
+              <input type="text" id="f-routePredict" spellcheck="false" class="mono" placeholder="The recipe's">
+            </div>
+            <div class="field row">
+              <label for="f-routeHealth">Health route</label>
+              <input type="text" id="f-routeHealth" spellcheck="false" class="mono" placeholder="The recipe's">
+            </div>
+            <div class="field row">
+              <label for="f-routePort">Port</label>
+              <input type="number" id="f-routePort" min="1" max="65535" step="1" inputmode="numeric" placeholder="8080">
+            </div>
+            <div class="field row">
+              <label for="f-shm">Shared memory</label>
+              <span class="unit-input"><input type="number" id="f-shm" min="1" max="1024" step="1" inputmode="numeric" placeholder="16" aria-describedby="shmHint"><span class="unit">GB</span></span>
+            </div>
+            <p class="hint" id="shmHint">Empty: 16 GB, or about 43% of the machine's memory when <code>HF_HOME</code> is in <code>/dev/shm</code> (weights cached in memory; the container disk holds about 50 GB).</p>
+            <label class="check" id="hfTokenRow"><input type="checkbox" id="f-hfToken" aria-describedby="hfTokenHint"> Give the endpoint my Hugging Face token</label>
+            <p class="hint" id="hfTokenHint">For gated weights downloaded from Hugging Face. The token is set as an environment variable on the benchmark model, which anyone with read access to Agent Platform models in this project can see until the run tears it down.</p>
+            <div class="patch-row" id="patchRow" hidden></div>
+          </details>
+          <p class="field-error" id="servingError" role="alert" hidden></p>
         </div>
       </details>
     </form>

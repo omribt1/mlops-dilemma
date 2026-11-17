@@ -254,7 +254,8 @@ def test_image_override_keeps_the_verified_recipe_args():
     image2, args2, _, _ = deploy._args(cfg, ch, VERIFIED)
     assert image2 == IMG and args2 == args
     assert deploy.valid_image_ref(IMG) and deploy.valid_image_ref("gcr.io/my-project/vllm@sha256:" + "a" * 64)
-    for bad in ("pytorch-vllm-serve:gemma4", "docker.io/vllm/vllm-openai:latest", "us-docker.pkg.dev/p/r", ""):
+    assert deploy.valid_image_ref("docker.io/vllm/vllm-openai:latest")     # Docker Hub: pulled through Artifact Registry
+    for bad in ("pytorch-vllm-serve:gemma4", "vllm/vllm-openai:latest", "docker.io/Vllm/x", "us-docker.pkg.dev/p/r", ""):
         assert not deploy.valid_image_ref(bad), bad
 
 

@@ -4,6 +4,9 @@ Uses the Model Garden verified container for the chosen machine when there is on
 generic vLLM serving image. Custom container args drop Model Garden's routes, so they are set
 explicitly — without them Agent Platform health-checks a path vLLM doesn't serve and the deploy never
 becomes ready. Benchmark deployments use one replica (min = max).
+
+A custom serving container (your image, command, arguments, environment, routes, shared memory, a Python patch)
+is layered on top by serving.container_spec; see serving.py.
 """
 
 import json
@@ -11,15 +14,10 @@ import re
 import time
 from pathlib import Path
 
-from aiops_dilemma import auth, regions
+from aiops_dilemma import auth, regions, serving
 
 # Fallback when the model has no Model Garden verified config (tags are dated; override with deployment.image).
 VLLM_IMAGE = "us-docker.pkg.dev/vertex-ai/vertex-vision-model-garden-dockers/pytorch-vllm-serve:20260713_0916_RC01"
-
-
-_IMAGE_RE = re.compile(r"^(?:[a-z0-9-]+-docker\.pkg\.dev/[a-z0-9][a-z0-9.:-]*(?:/[a-z0-9][a-z0-9._-]*){2,}"
-                       r"|(?:[a-z]+\.)?gcr\.io/[a-z0-9][a-z0-9.:-]*(?:/[a-z0-9][a-z0-9._-]*)+)"
-                       r"(?::[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}|@sha256:[a-f0-9]{64})?$")
 
 
 def image_supports(image: str | None, accelerator_type: str) -> str | None:
@@ -38,8 +36,8 @@ def image_supports(image: str | None, accelerator_type: str) -> str | None:
 
 
 def valid_image_ref(image: str) -> bool:
-    """Artifact Registry / Container Registry image reference (same rule as the web app's Serving image field)."""
-    return bool(_IMAGE_RE.match(str(image or "").strip()))
+    """Artifact Registry, Container Registry or Docker Hub (docker.io/...) image reference, as the web app checks it."""
+    return serving.valid_image_ref(image)
 
 
 def _project(cfg: dict) -> str:
@@ -71,7 +69,8 @@ def _args(cfg: dict, chosen: dict, verified: dict | None, any_image: str | None 
         args.append("--quantization=fp8")
     if m.get("max_model_len"):
         args.append(f"--max-model-len={m['max_model_len']}")
-    args += cfg["deployment"].get("extra_args", [])
+    if cfg["deployment"].get("args_mode") != "replace":   # replace: serving.container_spec uses extra_args alone
+        args = serving.merge_args(args, cfg["deployment"].get("extra_args") or [])
     return image, args, env, routes
 
 
@@ -150,12 +149,33 @@ def deploy(cfg: dict, plan: dict, run_dir: Path, replicas: int = 1) -> dict:
         if base:
             ver, adapted_from = adapt_recipe(base, ch["accelerator_count"]), \
                 f"{base['accelerator_count']}x {base['accelerator_type']}"
-    image, args, env, routes = _args(cfg, ch, ver, any_image)
     if cfg["deployment"].get("image") and not valid_image_ref(cfg["deployment"]["image"]):
-        raise SystemExit(f"deployment.image '{cfg['deployment']['image']}' doesn't look like an Artifact Registry or "
-                         "Container Registry image (e.g. us-docker.pkg.dev/my-project/my-repo/vllm:tag)")
-    source = "deployment.image" if cfg["deployment"].get("image") else "verified recipe" if ver else "fallback"
-    if adapted_from:
+        raise SystemExit(f"deployment.image '{cfg['deployment']['image']}' doesn't look like an Artifact Registry, "
+                         "Container Registry or Docker Hub image (e.g. us-docker.pkg.dev/my-project/my-repo/vllm:tag "
+                         "or docker.io/vllm/vllm-openai:v0.31.0)")
+    d_srv = dict(cfg["deployment"])
+    problems = serving.normalize(d_srv)
+    if problems:
+        raise SystemExit("Can't deploy the custom serving container: " + "; ".join(problems))
+    if serving.context_warning(cfg):
+        print(f"warning: {serving.context_warning(cfg)}")
+    image, args, env, routes = _args(cfg, ch, ver, any_image)
+    # extra_args are already merged into args (append mode); replace mode takes them from d_srv
+    spec = serving.container_spec({**d_srv, "extra_args": d_srv["extra_args"] if d_srv["args_mode"] == "replace" else []},
+                                  {"image": image, "args": args, "env": env, "routes": routes}, ch.get("machine_type"),
+                                  hf_token=_hf_token() if d_srv.get("pass_hf_token") else None)
+    if d_srv.get("pass_hf_token") and not spec["record"].get("hf_token_passed"):
+        print("warning: pass_hf_token is set but no Hugging Face token is available; gated weights won't load")
+    image, args, env, routes = spec["image"], spec["args"], spec["env"], spec["routes"]
+    image_requested = image
+    if serving.is_dockerhub(image):
+        serving.ensure_dockerhub_repo(proj, regions.require(cfg["region"]))
+        image = serving.dockerhub_ar_uri(image, proj, regions.require(cfg["region"]))
+        serving.warm_remote_image(image, proj)
+        print(f"Docker Hub image {image_requested} -> pulled through {image}")
+    source = ("tuned config" if d_srv.get("tuned") else "custom container" if serving.is_custom(d_srv)
+              else "deployment.image" if cfg["deployment"].get("image") else "verified recipe" if ver else "fallback")
+    if adapted_from and d_srv["args_mode"] != "replace":
         source += f" (args adapted from the {adapted_from} recipe)"
     print(f"serving image: {image} ({source})")
     vertexai.init(project=proj, location=regions.require(cfg["region"]), credentials=auth.credentials(proj))
@@ -168,7 +188,13 @@ def deploy(cfg: dict, plan: dict, run_dir: Path, replicas: int = 1) -> dict:
     container = dict(serving_container_image_uri=image, serving_container_args=args,
                      serving_container_environment_variables=env, serving_container_predict_route=routes["predict"],
                      serving_container_health_route=routes["health"], serving_container_ports=[routes["port"]],
-                     serving_container_shared_memory_size_mb=16384, serving_container_deployment_timeout=7200)
+                     serving_container_shared_memory_size_mb=spec["shared_memory_mb"],
+                     serving_container_deployment_timeout=7200)
+    if spec["command"]:
+        container["serving_container_command"] = spec["command"]
+    if (cfg.get("deployment") or {}).get("one_step_deploy") and serving.is_custom(d_srv):
+        raise SystemExit("one_step_deploy can't use a custom serving container (command, env, routes, patch); "
+                         "turn one_step_deploy off")
     if (cfg.get("deployment") or {}).get("one_step_deploy"):
         # Model Garden's one-step deploy: simpler, but the endpoint keeps the default ~30 s request limit, which
         # cuts reasoning and long-prompt requests. Kept as an opt-in fallback.
@@ -183,10 +209,19 @@ def deploy(cfg: dict, plan: dict, run_dir: Path, replicas: int = 1) -> dict:
     state.update({"region": cfg["region"], **{k: ch[k] for k in ("machine_type", "accelerator_type", "accelerator_count")},
                   "precision": cfg["model"].get("precision", "bf16"), "replicas": replicas,
                   # provenance: what actually served the benchmark (analyze copies it into measured.json)
-                  "image": image, "image_source": source, "args": args})
+                  "image": image, "image_source": source, "args": args, **spec["record"],
+                  **({"image_requested": image_requested} if image_requested != image else {})})
     (run_dir / "endpoint.json").write_text(json.dumps(state, indent=2))
     print(json.dumps(state, indent=2))
     return state
+
+
+def _hf_token() -> str | None:
+    """The Hugging Face token for pass_hf_token: the job's HF_TOKEN (the app passes a memory-only token that way),
+    else the saved one."""
+    import os
+    from aiops_dilemma import hftoken
+    return os.environ.get("HF_TOKEN") or hftoken.token()
 
 
 def _publisher_model(model_garden_id: str) -> str:

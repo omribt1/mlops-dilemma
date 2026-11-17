@@ -741,6 +741,9 @@ def reference_entry(cfg: dict, run_dir) -> tuple[dict, list[str]]:
     if not m.get("within_budget", True):
         warn.append("no level met the latency budget")
     serving = m.get("serving") or {}
+    if any(serving.get(k) for k in ("command", "env", "patch", "tuned")) or serving.get("args_mode") == "replace":
+        warn.append("the run used a custom serving container or a tuned config: reference benchmarks use the "
+                    "recipe or pinned image with default flags, so this is not comparable across GPUs")
     entry = {
         "accelerator_type": ep.get("accelerator_type"), "accelerator_count": ep.get("accelerator_count"),
         "machine_type": ep.get("machine_type"),
