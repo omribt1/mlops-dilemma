@@ -7,8 +7,8 @@
     "accelerator_count": 1,
     "machine_type": "g4-standard-48"
   },
-  "input_tps_per_gpu": 9000.0,
+  "input_tps_per_gpu": 17946.0,
   "throughput_source": "override",
-  "throughput_label": "Assumed 9,000 input tok/s per chip: an assumption for this illustrative example (thinking-heavy output), not measured. Run a benchmark to measure it.",
+  "throughput_label": "17,946 input tok/s per chip on short prompts, measured in a benchmark of this illustrative example's workload on 1 \u00d7 RTX PRO 6000 (2026-11-16); long prompts use its measured per-class rates. Your workload will differ: run a benchmark to measure it.",
   "measured_out_ratio": null
 }

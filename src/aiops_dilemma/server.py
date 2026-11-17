@@ -1569,7 +1569,7 @@ def api_simulate_session(name: str, payload: dict | None = None):
 
 # Assumed FP8 RTX PRO 6000 input tok/s per GPU for the blog's illustrative example (a thinking-heavy workload,
 # 5,000 in / 500 + 30% x 1,500 thinking out per request). An assumption for the example, not a measurement.
-BLOG_EXAMPLE_TPS = 9000.0
+BLOG_EXAMPLE_TPS = 17946.0   # measured short-prompt rate of the blog workload (blog-mix-g, 1x RTX PRO 6000)
 
 
 def build_example_session(dest: Path | None = None) -> Path:
@@ -1589,8 +1589,9 @@ def build_example_session(dest: Path | None = None) -> Path:
     p = planner.plan(cfg)
     (dest / "plan.json").write_text(json.dumps(p, indent=2, default=str))
     ch = p["chosen"]
-    label = (f"Assumed {BLOG_EXAMPLE_TPS:,.0f} input tok/s per chip: an assumption for this illustrative example "
-             "(thinking-heavy output), not measured. Run a benchmark to measure it.")
+    label = (f"{BLOG_EXAMPLE_TPS:,.0f} input tok/s per chip on short prompts, measured in a benchmark of this illustrative "
+             "example's workload on 1 × RTX PRO 6000 (2026-11-16); long prompts use its measured per-class rates. "
+             "Your workload will differ: run a benchmark to measure it.")
     measured = {"estimated": True, "levels": [], "peak": None, "endpoint": _hw(ch),
                 "input_tps_per_gpu": BLOG_EXAMPLE_TPS, "throughput_source": "override",
                 "throughput_label": label, "measured_out_ratio": None}

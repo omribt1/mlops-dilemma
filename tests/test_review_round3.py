@@ -15,7 +15,7 @@ from test_traffic_presets import GEM, ROOT, TPS
 
 @pytest.fixture(scope="module")
 def blog():
-    cfg = config.normalize(yaml.safe_load((ROOT / "blog" / "example" / "workload.yaml").read_text()))
+    cfg = config.normalize(yaml.safe_load((ROOT / "tests" / "fixtures" / "startup-v1.yaml").read_text()))
     return cfg, planner.plan(cfg)["chosen"]
 
 

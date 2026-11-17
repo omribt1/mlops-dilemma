@@ -156,7 +156,7 @@ def _builder(cfg: dict, cache_dir: Path):
         "required": ["label", "score", "ids", "reason"]}
     think = req.get("thinking_share", 0.0)
     base_out = max(64, int(req["avg_output_tokens"]))   # answer tokens; thinking is separate
-    think_tok = int(req.get("avg_thinking_tokens") or 2 * base_out)
+    think_tok = max(0, int(req.get("avg_thinking_tokens") or 0))   # as the cost model (effective_output_tokens)
 
     def make(n: int, r: random.Random, scale: float, total: int | None = None,
              max_tokens: int | None = None) -> tuple[dict, int]:

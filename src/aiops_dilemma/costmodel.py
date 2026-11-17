@@ -130,6 +130,15 @@ def long_tier(gem: dict) -> dict | None:
     return None
 
 
+def gemini_mix_rate(gem: dict, b: dict, out_ratio: float, cache: float) -> float:
+    """$ per input token when the whole prompt mix goes to a Gemini model (baseline overflow, failover, peak spill):
+    its long-context tier applies to the share of each class above the tier's threshold. A single-price model:
+    gemini_rate, unchanged. Mirrors model.js geminiMixRate."""
+    if long_tier(gem) is None:
+        return gemini_rate(gem, out_ratio, cache)
+    return gemini_long_rate(gem, b, ("small", "medium", "large"))
+
+
 BUCKET_LOW = {"small": 0.0, "medium": 32000.0, "large": 128000.0}   # lower prompt-size bound of each class
 
 
@@ -393,12 +402,13 @@ def fixed_fleet(demand, per_gpu, replica, price, maas_cap_tps, rate, headroom, g
 
 
 def baseline(demand, cfg: dict, maas_rps: float, rate: float, gem_cat: dict, failover_target: str | None,
-             out_ratio: float, cache: float, headroom: float = 1.0) -> dict:
+             out_ratio: float, cache: float, headroom: float = 1.0, b: dict | None = None) -> dict:
     """Pay-per-token baseline that respects the open-model MaaS rate limit.
 
     MaaS is planned at limit / headroom per hour, exactly as for a fleet's overflow (hourly averages hide bursts that
     would hit the limit). Feasible (peak requests/s <= limit / headroom): everything on MaaS ("maas_only").
-    Otherwise MaaS serves up to that each hour and the rest overflows to the failover target ("maas_plus_overflow").
+    Otherwise MaaS serves up to that each hour and the rest overflows to the failover target ("maas_plus_overflow"),
+    at its long-context price on the share of prompts above the threshold (gemini_mix_rate; `b` = buckets(cfg)).
     """
     scale = HOURS_PER_MONTH / len(demand)
     avg_in = mean_request_tokens(cfg)
@@ -417,7 +427,7 @@ def baseline(demand, cfg: dict, maas_rps: float, rate: float, gem_cat: dict, fai
         on_maas = np.minimum(demand, cap_tps)
         over = demand - on_maas
         maas_cost = float(on_maas.sum()) * 3600 * scale * rate
-        over_cost = float(over.sum()) * 3600 * scale * gemini_rate(gem, out_ratio, cache)
+        over_cost = float(over.sum()) * 3600 * scale * gemini_mix_rate(gem, b or buckets(cfg), out_ratio, cache)
         name = gem.get("name", key)
         base = {"kind": "maas_plus_overflow", "total": maas_cost + over_cost, "maas_cost": maas_cost,
                 "overflow_cost": over_cost, "overflow_target": key,
@@ -471,7 +481,7 @@ def scenario(cfg: dict, per_gpu: float, prices: dict, tier: str, replica: int, *
 
     maas_only = tokens * rate
     base_info = baseline(demand, cfg, rps, rate, gem_cat, fail_key, out_ratio, cache,
-                         headroom=cfg["constraints"]["burst_headroom"])
+                         headroom=cfg["constraints"]["burst_headroom"], b=b)
     common = {"tier": tier, "maas_only": maas_only, "monthly_tokens": tokens, "peak": float(demand.max()),
               "avg": float(demand.mean()), "buckets": b, "effective_output_tokens": effective_output_tokens(cfg["requests"]),
               "peak_overflow_target": ov_target, "failover_target": fail_key, **base_info}
@@ -500,7 +510,8 @@ def scenario(cfg: dict, per_gpu: float, prices: dict, tier: str, replica: int, *
             spare_rps = float(rps or 0)  # Gemini on Agent Platform handles long prompts on its own quota
         else:
             long_rate = maas_rate(cfg, long_out_ratio, long_cached)
-            spare_rps = float(rps or 0) - long_rps_peak
+            # long prompts get the same burst room as the fleet's overflow: MaaS plans them at long_rps x headroom
+            spare_rps = float(rps or 0) - long_rps_peak * max(1.0, float(cfg["constraints"]["burst_headroom"] or 1.0))
 
         if spare_rps < 0:
             return {
@@ -521,9 +532,11 @@ def scenario(cfg: dict, per_gpu: float, prices: dict, tier: str, replica: int, *
         fleet_args = (demand, blended_per_gpu, prices[tier], float(rps or 0) * mean_in, rate,
                       cfg["constraints"]["burst_headroom"])
         fail_out, fail_cache = out_ratio, cache
+    long_aware = not (do_route_long and b["long_token_share"] > 0)   # spill carries long prompts too
     d_fleet, chip_tps, price, cap_tps, maas_rate_used, headroom = fleet_args
     spill_key = ov_target if ov_gem else fail_key        # Gemini tier that takes spill beyond the MaaS cap
-    gem_rate_used = gemini_rate(gem_cat[spill_key], fail_out, fail_cache)
+    gem_rate_used = (gemini_mix_rate(gem_cat[spill_key], b, fail_out, fail_cache) if long_aware
+                     else gemini_rate(gem_cat[spill_key], fail_out, fail_cache))
     gem_cap = gem_quota_rps * mean_in if gem_quota_rps else None
     # Redundant chips are standby capacity on top of the serving fleet: each serving chip really costs res x price,
     # so the optimizer weighs chips against overflow at that price (res = 1: unchanged).
@@ -531,8 +544,10 @@ def scenario(cfg: dict, per_gpu: float, prices: dict, tier: str, replica: int, *
                         gem_cap)
     optimal = fleet
     if fleet_override is not None:
+        # fleet_override = serving replicas (the waterline); standby chips (res > 1) come on top, so each serving
+        # chip is priced at res x price, as for the optimum
         n = max(0, int(round(float(fleet_override)))) * max(1, replica)
-        fleet = eval_fleet(d_fleet, n, chip_tps, price, cap_tps, maas_rate_used, headroom, gem_rate_used, gem_cap,
+        fleet = eval_fleet(d_fleet, n, chip_tps, price * res, cap_tps, maas_rate_used, headroom, gem_rate_used, gem_cap,
                            max(1, replica))
 
     out = {
@@ -623,10 +638,11 @@ def resilience_and_hybrid_summary(cfg: dict, per_gpu: float, prices: dict, tier:
 
     out_ratio, cache = request_mix(cfg)
     open_rate = maas_rate(cfg, out_ratio, cache)
-    lite_rate = gemini_rate(gem_cat["gemini_flash_lite"], out_ratio, cache)
-    flash_rate = gemini_rate(gem_cat["gemini_flash"], out_ratio, cache)
-    pro_rate = gemini_rate(gem_cat["gemini_pro"], out_ratio, cache)
-    g4_rate = gemini_rate(gem_cat["gemini_4"], out_ratio, cache)
+    bk = base["buckets"]   # failover carries the whole mix: long-context price on prompts above the threshold
+    lite_rate = gemini_mix_rate(gem_cat["gemini_flash_lite"], bk, out_ratio, cache)
+    flash_rate = gemini_mix_rate(gem_cat["gemini_flash"], bk, out_ratio, cache)
+    pro_rate = gemini_mix_rate(gem_cat["gemini_pro"], bk, out_ratio, cache)
+    g4_rate = gemini_mix_rate(gem_cat["gemini_4"], bk, out_ratio, cache)
 
     incidents = []
     for label, tok in (

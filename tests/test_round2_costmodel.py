@@ -22,7 +22,7 @@ GEM = copy.deepcopy(catalog.GEMINI_MODELS)   # fixed prices: tests don't depend 
 
 @pytest.fixture(scope="module")
 def blog():
-    cfg = config.normalize(yaml.safe_load((ROOT / "blog" / "example" / "workload.yaml").read_text()))
+    cfg = config.normalize(yaml.safe_load((ROOT / "tests" / "fixtures" / "startup-v1.yaml").read_text()))
     ch = planner.plan(cfg)["chosen"]
     return cfg, ch
 

@@ -71,12 +71,15 @@ rate = ((1 - c) * price_in + c * price_cached + o * price_out) / 1e6        $ pe
 ```
 
 Gemini prompts above the model's long-context threshold (200K) pay its long-context prices for the share of tokens
-above the threshold (`costmodel.gemini_long_rate`). A Gemini model without a published cached price is priced at 10%
+above the threshold (`costmodel.gemini_long_rate`). This applies wherever prompts over 200K can reach Gemini: routed
+long prompts, and the whole mix when it goes to Gemini as baseline overflow, peak spill or failover
+(`costmodel.gemini_mix_rate`). A Gemini model without a published cached price is priced at 10%
 of its input price for cached tokens.
 
 `avg_input_tokens` includes the long prompts. If the long tail alone is larger than that average allows (the short
 prompts would have to average under 800 tokens), the CLI and the app warn and ask you to raise the average or lower
-the tail; requests per second always use `avg_input_tokens`.
+the tail; requests per second always use `avg_input_tokens`. The request-level simulation (section 8) instead
+draws arrivals at the mix's real mean size, so its tokens match the demand.
 
 ## 4. Throughput per chip
 
@@ -155,7 +158,8 @@ that run hotter, so only part of the MaaS limit is planned against.
 
 The app chooses **the cheapest acceptable fleet**, comparing each candidate size at its full cost per serving chip
 (price × the resilience multiplier, section 6). The draggable fleet line in the app uses the same rule, so its
-cheapest acceptable position is always the recommended fleet. When allowing Gemini at peaks would be at least 3%
+cheapest acceptable position is always the recommended fleet. Its position is the number of **serving** replicas;
+standby chips come on top and are priced in the same way. When allowing Gemini at peaks would be at least 3%
 cheaper, the app says so and offers to switch.
 
 **Monthly cost:**
@@ -192,8 +196,8 @@ week matters more than its volume.
 - **Peak overflow** (above): where the busiest hours spill.
 - **Long-prompt routing** (`hybrid.route_long`): prompts over 32K go to MaaS or a Gemini model instead of the
   fleet. The fleet then serves only short prompts at the short-prompt rate, and the long prompts are priced per token
-  at that target's rates. Routed to open-model MaaS, long prompts use its rate limit first; the short prompts'
-  peak overflow gets what's left.
+  at that target's rates. Routed to open-model MaaS, long prompts use its rate limit first, with the same burst room as
+  overflow (their busiest hour's requests/s × `burst_headroom`); the short prompts' peak overflow gets what's left.
 - **Failover** (`hybrid.failover_target`): during an outage, traffic goes per token instead of to standby chips.
 
 **Resilience** (`constraints.resilience_multiplier`): 1.5 models zone redundancy and 2 two regions. The extra chips
@@ -216,15 +220,16 @@ teardown. The endpoint is torn down even when a step fails or the run is cancell
 or the workload's defaults), or **synthetic ones shaped like your workload**:
 
 - Sizes are drawn to match your size mix: short prompts from a lognormal distribution clipped to 400–32K tokens,
-  its parameters solved so the clipped sizes average what the overall `avg_input_tokens` requires; medium prompts 0.65–1.35× `medium_mean`; large ones
-  0.75–1.25× `large_mean`. Tokens are counted with the model's own tokenizer.
+  its parameters solved so the clipped sizes average what the overall `avg_input_tokens` requires; medium prompts 0.65–1.35× `medium_mean`, clamped to
+  32.5K–128K; large ones 0.75–1.25× `large_mean`, at least 128.5K (no upper cap). A class mean near a boundary
+  therefore shifts slightly. Tokens are counted with the model's own tokenizer.
 - Content is filler records and sentences, so no two requests share user content.
 - A small set of shared system prompts (8 by default, sized 0.4–1.6× `system_prompt_tokens`) prefixes the requests,
   so prefix caching helps exactly as much as a shared system prompt would in production.
 - Answers are JSON. With `match_output_length` the system prompt asks for about `avg_output_tokens`, so the
   benchmark measures the answer length you configured.
 - `thinking_share` of the prompts run with reasoning on. Each request's `max_tokens` is 2 × `avg_output_tokens`, plus
-  1.5 × `avg_thinking_tokens` when reasoning is on; prompts over 32K without reasoning are capped at 400 output tokens
+  1.5 × `avg_thinking_tokens` when reasoning is on (0 if unset, as in the cost model); prompts over 32K without reasoning are capped at 400 output tokens
   (long prompts usually return short structured answers).
 - 1,600 prompts by default: enough for 4 levels × 300 requests without reusing a prompt.
 
@@ -267,7 +272,8 @@ are stored with the measurement (`bucket_tps`) and used by every view.
 
 The cost model works on hourly averages; the simulation checks it with individual requests (`simulate.py`):
 
-- Poisson arrivals that follow the hourly curve, with sizes drawn from the size classes.
+- Poisson arrivals that follow the hourly curve, with sizes drawn from the size classes. The baseline it compares
+  against is the hourly model's (MaaS planned at limit ÷ headroom).
 - Each replica serves its queue first-come-first-served (like vLLM's scheduler). A request costs
   `tokens / class_rate` replica-seconds.
 - A gateway picks the less loaded of two random replicas, and sends a request to MaaS (within its rate limit) when
@@ -293,6 +299,13 @@ The simulation finds the smallest fleet that passes for each scenario and prices
 - **Estimates are labelled.** Throughput you haven't measured on your own prompts can be off by several times; the
   app tags every figure with its source.
 - **No autoscaling.** The fleet is sized for the busiest hour and runs all month.
+- **Latency is a constraint, not a cost.** The benchmark's peak is the highest throughput whose p95 latency fits
+  `constraints.latency_budget_s`; a tighter budget lowers throughput per chip and so raises the fleet. Per-token
+  services' latency (shared capacity, a different model for Gemini overflow) isn't modelled.
+- **Fleet operations aren't priced.** Tensor parallelism across a replica's GPUs is in the throughput estimate
+  (`catalog.TP_EFF`, lower without NVLink); load balancing across replicas, rolling upgrades, 10–30-minute deploys,
+  GPU capacity shortages and spare test capacity are not. Agent Platform prices include its management fee;
+  self-managed GKE prices don't, and the cluster is then yours to run.
 - **One replica per benchmark.** Production fleets are modelled as identical replicas of what was measured.
 - **Rate limits, prices and GPU availability change.** The data sources (Model Garden, Hugging Face, Compute
   Engine, Cloud Billing, Cloud Quotas, the live Gemini catalog) and their fallbacks are listed in the README under

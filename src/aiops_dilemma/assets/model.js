@@ -248,7 +248,12 @@
   // Pay-per-token baseline honest about the MaaS rate limit (costmodel.baseline): everything on MaaS when the peak
   // fits its limit, else MaaS up to the limit each hour + overflow to the failover target.
   // MaaS planned at limit / headroom per hour, as for a fleet's overflow (costmodel.baseline).
-  function baselineOf(D, p, rate, gemMap, failTarget, outRatio, cache) {
+  // Whole prompt mix to a Gemini model: long-context tier on the share above its threshold (costmodel.gemini_mix_rate).
+  function geminiMixRate(gem, b, outRatio, cache) {
+    return longTier(gem) ? geminiLongRate(gem, b, ["small", "medium", "large"]) : geminiRate(gem, outRatio, cache);
+  }
+
+  function baselineOf(D, p, rate, gemMap, failTarget, outRatio, cache, b) {
     const scale = 730 / D.length;
     const meanIn = meanRequestTokens(p);
     const peakRps = Math.max(...D) / Math.max(1, meanIn);
@@ -265,7 +270,7 @@
       let onMaas = 0, over = 0;
       for (const d of D) { const m = Math.min(d, capTps); onMaas += m; over += d - m; }
       const maasCost = onMaas * 3600 * scale * rate;
-      const overCost = over * 3600 * scale * geminiRate(gem, outRatio, cache);
+      const overCost = over * 3600 * scale * (b ? geminiMixRate(gem, b, outRatio, cache) : geminiRate(gem, outRatio, cache));
       base = { kind: "maas_plus_overflow", total: maasCost + overCost, maas_cost: maasCost, overflow_cost: overCost,
                overflow_target: key,
                label: capRps > 0 ? `Open-model MaaS up to ${capRps} req/s + ${gem.name} overflow`
@@ -354,12 +359,12 @@
       throughput: { all: perGpu, small: perGpu * b.smallSpeedup, longGpuShare: b.longGpuShare,
                     perChip: chipTps, mixFactor: b.mixFactor, mixFactorRef },
       resilience,
-    }, baselineOf(D, p, rate, gemMap, failTarget, outRatio, cache));
+    }, baselineOf(D, p, rate, gemMap, failTarget, outRatio, cache, b));
     const overrideReplicas = p.fleetOverride != null && p.fleetOverride !== "" && isFinite(+p.fleetOverride)
       ? Math.max(0, Math.round(+p.fleetOverride)) : null;
     let optimal = null;
-    const sizeFleet = (Dfleet, perChip, capTps, rate_, outR, cacheR, meanIn) => {
-      const gRate = geminiRate(gemMap[spillTarget], outR, cacheR);
+    const sizeFleet = (Dfleet, perChip, capTps, rate_, outR, cacheR, meanIn, wholeMix) => {
+      const gRate = wholeMix ? geminiMixRate(gemMap[spillTarget], b, outR, cacheR) : geminiRate(gemMap[spillTarget], outR, cacheR);
       const gCap = ovGem ? GEMINI_OVERFLOW_RPS * meanIn : null;
       // Standby chips (resilience > 1) make each serving chip cost resilience x price (costmodel.scenario).
       const opt = fixedFleet(Dfleet, perChip, replica, price * resilience, capTps, rate_, p.headroom, gRate, gCap);
@@ -372,12 +377,13 @@
       if (overrideReplicas == null) return opt;
       out.overridden = true;
       out.fleetReplicas = overrideReplicas;
-      return evalFleet(Dfleet, overrideReplicas * replica, perChip, price, capTps, rate_, p.headroom, gRate, gCap, replica);
+      // overrideReplicas = serving replicas; standby chips priced in, as for the optimum (costmodel.scenario)
+      return evalFleet(Dfleet, overrideReplicas * replica, perChip, price * resilience, capTps, rate_, p.headroom, gRate, gCap, replica);
     };
 
     let fleet = null, Dfleet = D;
     if (!doRoute) {
-      fleet = sizeFleet(D, perGpu, maasRps * meanRequestTokens(p), rate, outRatio, cache, meanRequestTokens(p));
+      fleet = sizeFleet(D, perGpu, maasRps * meanRequestTokens(p), rate, outRatio, cache, meanRequestTokens(p), true);
       out.capPerGpu = perGpu;
       out.maasCapTps = maasRps * meanRequestTokens(p);
     } else {
@@ -396,7 +402,7 @@
         spareRps = maasRps; // Gemini on Agent Platform handles >32K on separate high quota
       } else {
         longRate = maasRate(p, longOutRatio, longCached);
-        spareRps = maasRps - longRps;
+        spareRps = maasRps - longRps * Math.max(1, +p.headroom || 1);   // long prompts get the same burst room
       }
       if (spareRps < 0) {
         out.infeasible = "Long-prompt traffic exceeds Open-Model MaaS limit — select Gemini on Agent Platform for >32K routing";
@@ -462,12 +468,12 @@
     const maasPeakHour = Math.min(peak, maasCap) * 3600;
     const gemMap = getGeminiPrices(DATA, p);
     const openRate = maasRate(p, r.overallOut, r.overallCache);
-    const liteRate = geminiRate(gemMap.gemini_flash_lite, r.overallOut, r.overallCache);
-    const flashRate = geminiRate(gemMap.gemini_flash, r.overallOut, r.overallCache);
-    const proRate = geminiRate(gemMap.gemini_pro, r.overallOut, r.overallCache);
-    const g4Rate = geminiRate(gemMap.gemini_4, r.overallOut, r.overallCache);
+    const liteRate = geminiMixRate(gemMap.gemini_flash_lite, r.buckets, r.overallOut, r.overallCache);
+    const flashRate = geminiMixRate(gemMap.gemini_flash, r.buckets, r.overallOut, r.overallCache);
+    const proRate = geminiMixRate(gemMap.gemini_pro, r.buckets, r.overallOut, r.overallCache);
+    const g4Rate = geminiMixRate(gemMap.gemini_4, r.buckets, r.overallOut, r.overallCache);
     const failKey = failoverKey(p.failoverTarget, gemMap);
-    const failRate = geminiRate(gemMap[failKey], r.overallOut, r.overallCache);
+    const failRate = geminiMixRate(gemMap[failKey], r.buckets, r.overallOut, r.overallCache);
 
     const rows = [
       ["Fleet down for peak hour (1h)", spillPeakHour],
@@ -516,7 +522,7 @@
   }
 
   const api = { scenario, fixedFleet, evalFleet, headroomBound, peakGeminiHint, hintText, GEMINI_OVERFLOW_RPS, demand, maasRate, geminiRate, buckets, classPenalties, incidents, getGeminiPrices,
-                safeResilience, effectiveOutput, clampOffPeak, baseline: baselineOf, failoverKey, geminiKey, aliasForId, geminiLongRate,
+                safeResilience, effectiveOutput, clampOffPeak, baseline: baselineOf, failoverKey, geminiKey, aliasForId, geminiLongRate, geminiMixRate,
                 aboveThreshold, longTier, GEMINI_ALIASES, OVERFLOW_TARGETS };
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.DilemmaModel = api;
 })(this);

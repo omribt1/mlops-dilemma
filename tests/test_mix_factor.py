@@ -23,7 +23,7 @@ MIXES = ((0, 0), (3, 1), (10, 3))
 
 @pytest.fixture(scope="module")
 def blog():
-    cfg = config.normalize(yaml.safe_load((ROOT / "blog" / "example" / "workload.yaml").read_text()))
+    cfg = config.normalize(yaml.safe_load((ROOT / "tests" / "fixtures" / "startup-v1.yaml").read_text()))
     ch = planner.plan(cfg)["chosen"]
     return cfg, ch
 
@@ -246,15 +246,15 @@ def test_example_session_numbers(client):
     # MaaS (15 req/s) can't serve the 28 req/s peak: the verdict compares against MaaS up to its limit + Flash-Lite.
     assert "MaaS can't serve your peak: limit 15 req/s (planned at 11.5 req/s per hour to absorb bursts) vs 28.0 req/s at peak" in md
     # The saved pricing option (1-yr reservation) drives the headline, and self-hosting loses.
-    assert "Your pricing option: **Agent Platform + reservation, 1-yr** — **$36K/month** with 12 GPUs" in md
-    assert "**112% of that baseline**" in md and "Stay on MaaS up to its limit" in md
+    assert "Your pricing option: **Agent Platform + reservation, 1-yr** — **$29K/month** with 10 GPUs" in md
+    assert "**132% of that baseline**" in md and "Stay on MaaS up to its limit" in md
     row = next(line for line in md.splitlines() if line.startswith("| Agent Platform + reservation, 1-yr |"))
-    assert "| 12 | $36K | 112% |" in row
-    assert "assumption for this illustrative example" in d["dashboard_data"]["throughput"]["label"]
+    assert "| 10 | $29K | 132% |" in row
+    assert "measured in a benchmark of this illustrative example" in d["dashboard_data"]["throughput"]["label"]
 
 
 def test_measured_mix_factor_flows_through_server(client):
-    cfg = config.normalize(json.loads(json.dumps({**yaml.safe_load((ROOT / "blog/example/workload.yaml").read_text())})))
+    cfg = config.normalize(json.loads(json.dumps({**yaml.safe_load((ROOT / "tests/fixtures/startup-v1.yaml").read_text())})))
     cfg["requests"]["pct_over_32k"], cfg["requests"]["pct_over_128k"] = 3, 1
     raw = {k: v for k, v in cfg.items() if not str(k).startswith("_")}
     client.post("/api/sessions/mx", json={"config": raw})
@@ -271,15 +271,15 @@ def test_measured_mix_factor_flows_through_server(client):
 
 
 def test_model_comparison_calibration(client):
-    # Example session: override 9,000 vs the RTX PRO 6000 spec estimate -> k applied to the other models.
+    # Example session: its measured short-prompt rate vs the RTX PRO 6000 spec estimate -> k applied to the others.
     r = client.post("/api/recommend/model", json={"session": "blog-example"}).json()
     ex = server._with_defaults(server._session_Config("blog-example", server.RUNS_DIR / "blog-example"))
     ch = planner.plan(ex)["chosen"]
-    k = TPS / planner.estimate_tps_per_chip(ex, ch["accelerator_type"], ch["accelerator_count"])
+    k = server.BLOG_EXAMPLE_TPS / planner.estimate_tps_per_chip(ex, ch["accelerator_type"], ch["accelerator_count"])
     assert r["calibration_k"] == pytest.approx(k, rel=1e-3) and k != 1.0
     others = [m for m in r["recommendations"] if not m.get("is_selected")]
     assert others and all(m["est_throughput_basis"] == server.CALIBRATED_BASIS for m in others)
-    # A session on the spec estimate: k = 1 and raw spec estimates.
+    # A session on the spec estimate with the example's own workload: k = 1 and raw spec estimates.
     raw = yaml.safe_load((ROOT / "blog/example/workload.yaml").read_text())
     client.post("/api/sessions/spec/estimate", json={"config": raw})
     r2 = client.post("/api/recommend/model", json={"session": "spec"}).json()

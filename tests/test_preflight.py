@@ -175,7 +175,7 @@ def test_run_skips_preflight_when_off_or_tagged(monkeypatch, tmp_path):
 
 
 def test_provenance_endpoint_to_measured_to_report(tmp_path):
-    cfg = config.normalize(yaml.safe_load((ROOT / "blog" / "example" / "workload.yaml").read_text()))
+    cfg = config.normalize(yaml.safe_load((ROOT / "tests" / "fixtures" / "startup-v1.yaml").read_text()))
     ch = planner.plan(cfg)["chosen"]
     ep = {"endpoint": "projects/my-gcp-project/locations/us-central1/endpoints/1", "dedicated_dns": "x",
           **{k: ch[k] for k in ("machine_type", "accelerator_type", "accelerator_count")},

@@ -1,11 +1,15 @@
 # Illustrative workload for the blog post: a made-up, hype-driven startup, not a real customer.
 #
 # An AI product for US office workers. Usage follows the US working day (East Coast heavy) and nearly vanishes
-# at night and on weekends: the busiest hour is ~4.7x the weekly average and ~67x the quietest hour. Prompts are
-# moderately long, a third of requests think before answering, and the open-model MaaS endpoint allows 15 req/s.
-# The startup pays as it goes or commits for one year at most, so the fleet is priced at Agent Platform +
-# reservation, 1-yr. Swap `traffic.preset` for us_europe, follow_the_sun or steady to see how the same monthly
-# volume, spread across time zones, changes the answer.
+# at night and on weekends: the busiest hour is ~4.7x the weekly average and ~67x the quietest hour. Most prompts
+# are a few thousand tokens; 1.25% are long documents or chat histories over 32K tokens (0.3% over 128K).
+# Reasoning is off. The open-model MaaS endpoint allows 15 req/s. The startup pays as it goes or commits for one
+# year at most, so the fleet is priced at Agent Platform + reservation, 1-yr.
+#
+# Throughput is measured, not assumed: a benchmark of exactly this workload on 1 x RTX PRO 6000 (Gemma 4 26B-A4B
+# FP8, pinned serving image, 2026-11-16) peaked at 11,385 input tok/s per GPU; its calibration pass measured
+# 17,946 tok/s on short prompts (the example session's per-chip figure, BLOG_EXAMPLE_TPS) and the per-class rates
+# below for long prompts in mixed traffic.
 name: blog-example
 project: my-gcp-project
 region: us-central1
@@ -17,10 +21,13 @@ traffic:
   preset: us_core_hours       # US business hours; same volume, different shape: us_europe | follow_the_sun | steady
   average_input_tps: 30000    # ~79B input tokens a month
 requests:
-  avg_input_tokens: 5000      # includes the system prompt
+  avg_input_tokens: 5000      # includes the system prompt and the long prompts
   avg_output_tokens: 500      # visible answer
-  thinking_share: 0.30        # share of requests with thinking on
-  avg_thinking_tokens: 1500   # extra output tokens when thinking is on
+  thinking_share: 0.0         # reasoning off
+  pct_over_32k: 1.25          # long documents and chat histories
+  pct_over_128k: 0.3
+  medium_mean: 60000          # average size of the 32K-128K prompts
+  large_mean: 170000          # average size of the >128K prompts
   system_prompt_tokens: 1800
   system_prompt_cache_hit: 0.9
 maas:
@@ -28,5 +35,8 @@ maas:
   output_per_m: 0.60
   cached_per_m: 0.015
   max_rps: 15
+throughput:                   # measured per-class rates (input tok/s per GPU, long prompts in mixed traffic)
+  medium_tps: 5335
+  large_tps: 4001
 pricing:
   tier: vertex_cud_1y         # no 3-year commitments at a startup

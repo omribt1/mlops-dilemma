@@ -99,7 +99,7 @@ def test_surges_need_more_gpus():
 
 
 def test_cli_simulate_end_to_end(tmp_path, capsys):
-    shutil.copy(ROOT / "blog/example/workload.yaml", tmp_path / "workload.yaml")
+    shutil.copy(ROOT / "tests/fixtures/startup-v1.yaml", tmp_path / "workload.yaml")
     rd = tmp_path / "runs" / "blog-example"
     rd.mkdir(parents=True)
     shutil.copy(ROOT / "blog/example/runs/blog-example/plan.json", rd / "plan.json")

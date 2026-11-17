@@ -1,0 +1,34 @@
+# Engine regression fixture: the blog example as of 2026-11-15 (30% reasoning, no long tail, used at 9,000 tok/s
+# per GPU). Kept fixed so cost-model tests don't move when the blog's example changes.
+# Illustrative workload for the blog post: a made-up, hype-driven startup, not a real customer.
+#
+# An AI product for US office workers. Usage follows the US working day (East Coast heavy) and nearly vanishes
+# at night and on weekends: the busiest hour is ~4.7x the weekly average and ~67x the quietest hour. Prompts are
+# moderately long, a third of requests think before answering, and the open-model MaaS endpoint allows 15 req/s.
+# The startup pays as it goes or commits for one year at most, so the fleet is priced at Agent Platform +
+# reservation, 1-yr. Swap `traffic.preset` for us_europe, follow_the_sun or steady to see how the same monthly
+# volume, spread across time zones, changes the answer.
+name: blog-example
+project: my-gcp-project
+region: us-central1
+model:
+  model_garden_id: google/gemma4@gemma-4-26b-a4b-it
+  hf_id: google/gemma-4-26b-a4b-it
+  precision: fp8
+traffic:
+  preset: us_core_hours       # US business hours; same volume, different shape: us_europe | follow_the_sun | steady
+  average_input_tps: 30000    # ~79B input tokens a month
+requests:
+  avg_input_tokens: 5000      # includes the system prompt
+  avg_output_tokens: 500      # visible answer
+  thinking_share: 0.30        # share of requests with thinking on
+  avg_thinking_tokens: 1500   # extra output tokens when thinking is on
+  system_prompt_tokens: 1800
+  system_prompt_cache_hit: 0.9
+maas:
+  input_per_m: 0.15
+  output_per_m: 0.60
+  cached_per_m: 0.015
+  max_rps: 15
+pricing:
+  tier: vertex_cud_1y         # no 3-year commitments at a startup

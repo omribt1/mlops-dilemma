@@ -73,8 +73,12 @@ def bucket_tps(cfg: dict, per_gpu: float, measured: dict | None = None, mix_fact
 
 def _size_mix(cfg: dict) -> dict:
     b = costmodel.buckets(cfg)
-    return {"share": np.array([b[k]["req"] for k in BUCKETS]) / sum(b[k]["req"] for k in BUCKETS),
-            "mean": {k: b[k]["mean"] for k in BUCKETS}}
+    reqs = sum(b[k]["req"] for k in BUCKETS)
+    return {"share": np.array([b[k]["req"] for k in BUCKETS]) / reqs,
+            "mean": {k: b[k]["mean"] for k in BUCKETS},
+            # mean request size of the sampled mix: avg_input_tokens, unless the long tail is too heavy for that
+            # average (short prompts floored at 800 tokens, config warns); then the mix's real mean
+            "total_mean": sum(b[k]["req"] * b[k]["mean"] for k in BUCKETS) / reqs}
 
 
 def _surge_segments(rate: float, burst: float, offset: float) -> list[tuple[float, float, float]]:
@@ -95,7 +99,7 @@ def sample_requests(cfg: dict, t0_h: int, t1_h: int, scenario: str = "gpu", burs
     demand = traffic.weekly_profile(cfg["traffic"]) if demand is None else np.asarray(demand, dtype=float)
     mix = _size_mix(cfg)
     share = mix["share"]
-    avg_in = float(cfg["requests"]["avg_input_tokens"])
+    avg_in = float(mix["total_mean"])                        # so the sampled tokens match the demand
     hours = np.arange(t0_h, t1_h)
     week_rate = demand / avg_in * scale                      # requests/s per hour of the week
     req_rate = week_rate[hours % len(demand)]
@@ -383,7 +387,8 @@ def run(cfg: dict, per_gpu: float, prices: dict, *, gpus_per_replica: int = 1, s
     out_ratio, cache = costmodel.request_mix(cfg)
     gem_cat = costmodel._gemini_catalog(gemini_catalog)
     base = costmodel.baseline(demand * scale, cfg, maas_rps, costmodel.maas_rate(cfg, out_ratio, cache), gem_cat,
-                              (cfg.get("hybrid") or {}).get("failover_target"), out_ratio, cache)
+                              (cfg.get("hybrid") or {}).get("failover_target"), out_ratio, cache,
+                              headroom=cfg["constraints"]["burst_headroom"])
 
     hourly = {}
     for sc, route in (("gpu", False), ("routed", True)):

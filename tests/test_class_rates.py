@@ -22,7 +22,7 @@ TAIL = {"pct_over_32k": 3.0, "pct_over_128k": 1.0, "medium_mean": 60000, "large_
 
 @pytest.fixture(scope="module")
 def blog():
-    raw = yaml.safe_load((ROOT / "blog" / "example" / "workload.yaml").read_text())
+    raw = yaml.safe_load((ROOT / "tests" / "fixtures" / "startup-v1.yaml").read_text())
     raw["requests"].update(TAIL)
     cfg = config.normalize(raw)
     ch = planner.plan(cfg)["chosen"]

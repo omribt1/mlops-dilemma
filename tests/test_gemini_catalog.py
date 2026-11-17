@@ -253,7 +253,7 @@ def test_normalize_validates_pinned_models(cat, monkeypatch):
 
 @pytest.fixture(scope="module")
 def blog():
-    cfg = config.normalize(yaml.safe_load((ROOT / "blog" / "example" / "workload.yaml").read_text()))
+    cfg = config.normalize(yaml.safe_load((ROOT / "tests" / "fixtures" / "startup-v1.yaml").read_text()))
     return cfg, planner.plan(cfg)["chosen"]
 
 
@@ -419,7 +419,7 @@ def test_gemini_refresh_endpoint_and_session_warning(client, cat, monkeypatch):
     assert seen["refresh"] is True and r["gemini_meta"]["source"] == "billing-catalog"
     assert any(m["id"] == "gemini-4-carbon" for m in r["gemini_models"])
     # a saved session pinned to a model the live catalog no longer offers: replaced by its alias, with a warning
-    raw = yaml.safe_load((ROOT / "blog" / "example" / "workload.yaml").read_text())
+    raw = yaml.safe_load((ROOT / "tests" / "fixtures" / "startup-v1.yaml").read_text())
     client.post("/api/sessions/pinned", json={"config": raw})
     raw["hybrid"] = {"failover_target": "gemini-3.7-flash"}
     (server.RUNS_DIR / "pinned" / "workload.yaml").write_text(yaml.safe_dump(raw))

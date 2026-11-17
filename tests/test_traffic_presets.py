@@ -51,7 +51,7 @@ def _reference_week(name: str) -> np.ndarray:
 
 @pytest.fixture(scope="module")
 def blog():
-    cfg = config.normalize(yaml.safe_load((ROOT / "blog" / "example" / "workload.yaml").read_text()))
+    cfg = config.normalize(yaml.safe_load((ROOT / "tests" / "fixtures" / "startup-v1.yaml").read_text()))
     return cfg, planner.plan(cfg)["chosen"]
 
 
@@ -156,7 +156,7 @@ def test_preview_and_presets_endpoints(client):
 
 
 def test_session_round_trip_preset_and_pricing_tier(client):
-    raw = yaml.safe_load((ROOT / "blog" / "example" / "workload.yaml").read_text())
+    raw = yaml.safe_load((ROOT / "tests" / "fixtures" / "startup-v1.yaml").read_text())
     raw["traffic"]["preset"] = "steady"
     raw["pricing"]["tier"] = "cud_3y"
     r = client.post("/api/sessions/rt", json={"config": raw})

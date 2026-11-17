@@ -52,7 +52,7 @@ def test_two_run_solve_recovers_slowdowns(tmp_path):
     assert T == pytest.approx(m["input_tps_per_gpu"], rel=1e-6)
     assert 3.0 < cal["slowdown"]["medium"] < 6.0 and cal["slowdown"]["large"] > cal["slowdown"]["medium"]
     # the cost model then reads the measured file as a blend with per-class rates
-    full = config.normalize(yaml.safe_load((ROOT / "blog" / "example" / "workload.yaml").read_text()))
+    full = config.normalize(yaml.safe_load((ROOT / "tests" / "fixtures" / "startup-v1.yaml").read_text()))
     full["requests"].update(_cfg()["requests"])
     assert costmodel.ref_mix_factor(full, m) == pytest.approx(S / m["input_tps_per_gpu"], rel=1e-9)
     c2 = costmodel.with_measured_classes(full, m)
@@ -71,7 +71,7 @@ def test_no_long_prompts_at_peak_is_an_error(tmp_path):
 
 
 def test_short_only_prompt_set(tmp_path):
-    raw = yaml.safe_load((ROOT / "blog" / "example" / "workload.yaml").read_text())
+    raw = yaml.safe_load((ROOT / "tests" / "fixtures" / "startup-v1.yaml").read_text())
     raw["requests"].update(pct_over_32k=3, pct_over_128k=1)
     raw["prompts"] = {"source": "synthetic", "synthetic": {"count": 40}}
     raw["model"]["hf_id"] = None          # offline: character-based token estimate
